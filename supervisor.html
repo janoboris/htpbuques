@@ -244,6 +244,9 @@ const Sup = {
           <div class="bodega-grid">
             ${Object.values(b.bodegas).filter(x => x.activa).map(bod => Sup.bodegaCardHTML(b.id, bod)).join('') || '<p class="muted">Sin bodegas activas</p>'}
           </div>
+          <div class="divider"></div>
+          <div class="card-title">Camiones por hora</div>
+          ${Sup.camionesPorHoraHTML(turnosBuque)}
           <div class="accion-row">
             <button class="btn btn-ghost btn-sm" onclick="Sup.abrirModalEditar('${b.id}')">✏️ Editar datos</button>
             ${b.estado === 'abierto'
@@ -276,6 +279,19 @@ const Sup = {
         </div>
         <button class="btn btn-ghost btn-xs" style="margin-top:8px;" onclick="Sup.abrirModalAjuste('${buqueId}','${bod.id}')">Ajustar tonelaje</button>
       </div>`;
+  },
+
+  camionesPorHoraHTML(turnosBuque) {
+    const bloques = HTP.camionesPorHora(turnosBuque);
+    if (!bloques.length) return '<p class="muted" style="font-size:12.5px; padding-bottom:10px;">Sin registros con hora (los turnos históricos cargados en bloque no traen detalle por camión)</p>';
+    const max = Math.max(...bloques.map(b => b.count));
+    return `<div style="margin-bottom:14px;">` + bloques.map(b => `
+      <div class="row-item">
+        <div class="main"><div class="t">${HTP.fmtBloqueHora(b.key)}</div>
+          <div class="bar" style="margin-top:4px; width:140px;"><span style="width:${(b.count / max * 100).toFixed(0)}%"></span></div>
+        </div>
+        <div class="side mono">${b.count} camiones · ${HTP.fmtTon(b.toneladas)} MT</div>
+      </div>`).join('') + `</div>`;
   },
 
   abrirModalAjuste(buqueId, bodegaId) {

@@ -96,6 +96,10 @@
           <input id="tonGranelInput" class="mono" type="number" inputmode="decimal" placeholder="0.0" style="font-size:20px; text-align:center;">
         </div>
         <div class="card">
+          <div class="card-title">Hora de despacho</div>
+          <input id="horaGranelInput" type="time">
+        </div>
+        <div class="card">
           <div class="card-title">Gang / cuadrilla (opcional)</div>
           <input id="gangGranelInput" placeholder="Ej: Gang N°1">
         </div>
@@ -129,12 +133,21 @@
           <div class="total-preview"><div class="v mono" id="aceroTotal">0.0</div><div class="l">Toneladas totales</div></div>
         </div>
         <div class="card">
+          <div class="card-title">Hora de despacho</div>
+          <input id="horaAceroInput" type="time">
+        </div>
+        <div class="card">
           <div class="card-title">Gang / cuadrilla (opcional)</div>
           <input id="gangAceroInput" placeholder="Ej: Gang N°1">
         </div>
         <button class="btn btn-accent btn-block" onclick="Tarja.registrarAcero()">✅ Registrar carga</button>
       </div>
 
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="card-title">Camiones por hora</div>
+      <div id="camionesPorHora"></div>
     </div>
 
     <div class="card" style="margin-top:14px;">
@@ -323,13 +336,22 @@ const Tarja = {
       document.getElementById('btnAbrirTurno').classList.add('hidden');
       form.classList.remove('hidden');
       fab.classList.toggle('hidden', buqueActual.estado === 'gira');
+      Tarja.setHoraAhora();
     }
     Tarja.renderRegistros();
+  },
+  setHoraAhora() {
+    const hhmm = new Date().toTimeString().slice(0, 5);
+    ['horaGranelInput', 'horaAceroInput'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !el.value) el.value = hhmm;
+    });
   },
   renderRegistros() {
     const cont = document.getElementById('registrosDelTurno');
     const regs = (turnoActual.registros || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
     document.getElementById('turnoTotalMini').textContent = `${HTP.fmtTon(turnoActual.totalToneladas)} MT · ${turnoActual.viajes} viajes`;
+    Tarja.renderCamionesPorHora();
     if (!regs.length) { cont.innerHTML = '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>'; return; }
     cont.innerHTML = regs.map(r => `
       <div class="row-item">
@@ -337,8 +359,30 @@ const Tarja = {
         <div class="side mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</div>
       </div>`).join('');
   },
+  renderCamionesPorHora() {
+    const cont = document.getElementById('camionesPorHora');
+    if (!cont) return;
+    const bloques = HTP.camionesPorHora([turnoActual]);
+    if (!bloques.length) { cont.innerHTML = '<p class="muted" style="font-size:12.5px;">Aún sin viajes en este turno</p>'; return; }
+    const max = Math.max(...bloques.map(b => b.count));
+    cont.innerHTML = bloques.map(b => `
+      <div class="row-item">
+        <div class="main"><div class="t">${HTP.fmtBloqueHora(b.key)}</div>
+          <div class="bar" style="margin-top:4px; width:120px;"><span style="width:${(b.count / max * 100).toFixed(0)}%"></span></div>
+        </div>
+        <div class="side mono">${b.count} camiones · ${HTP.fmtTon(b.toneladas)} MT</div>
+      </div>`).join('');
+  },
 
   /* ---------- REGISTRO GRANEL ---------- */
+  horaInputAISO(inputId) {
+    const val = document.getElementById(inputId).value;
+    if (!val) return new Date().toISOString();
+    const [h, m] = val.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  },
   async registrarGranel() {
     if (buqueActual.estado === 'gira') { HTP.toast('Buque en gira, no se puede registrar', 'bad'); return; }
     if (!camionSeleccionado) { HTP.toast('Selecciona un camión', 'bad'); return; }
@@ -355,11 +399,14 @@ const Tarja = {
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'granel', camion: camionSeleccionado, bodegaId: bodegaSeleccionada,
       toneladas: ton, pctRestante: pct, gang: document.getElementById('gangGranelInput').value.trim(),
+      ts: Tarja.horaInputAISO('horaGranelInput'),
       detalle: `${bod.nombre} (${bod.tipo})`
     });
     await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, ton, pct);
     document.getElementById('tonGranelInput').value = '';
+    document.getElementById('horaGranelInput').value = '';
     if (document.getElementById('pctRestanteInput')) document.getElementById('pctRestanteInput').value = '';
+    Tarja.setHoraAhora();
     HTP.toast('Viaje registrado', 'ok');
   },
 
@@ -390,10 +437,13 @@ const Tarja = {
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'acero', camion: camionSeleccionado, aceroTipo: tipoAceroSel, bultos, pesoUnitario: peso,
       bodegaId: bodegaSeleccionada, gang: document.getElementById('gangAceroInput').value.trim(),
+      ts: Tarja.horaInputAISO('horaAceroInput'),
       toneladas: total, detalle: `${bod.nombre} · ${bultos} × ${tipoAceroSel}`
     });
     await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, total, null);
     document.getElementById('aceroBultos').value = '';
+    document.getElementById('horaAceroInput').value = '';
+    Tarja.setHoraAhora();
     Tarja.calcularAcero();
     HTP.toast('Carga registrada', 'ok');
   },

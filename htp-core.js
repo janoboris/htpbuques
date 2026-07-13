@@ -182,7 +182,7 @@ const HTP = (() => {
   }
 
   async function agregarRegistro(turnoId, registro) {
-    const reg = { ...registro, id: 'r' + Date.now() + Math.random().toString(36).slice(2, 7), ts: new Date().toISOString() };
+    const reg = { ...registro, id: 'r' + Date.now() + Math.random().toString(36).slice(2, 7), ts: registro.ts || new Date().toISOString() };
     await col('turnos').doc(turnoId).update({
       registros: firebase.firestore.FieldValue.arrayUnion(reg),
       totalToneladas: firebase.firestore.FieldValue.increment(Number(registro.toneladas) || 0),
@@ -287,6 +287,30 @@ const HTP = (() => {
   /* ==================================================================
      CÁLCULOS OPERACIONALES
      ================================================================== */
+  // Agrupa registros (de uno o varios turnos) por bloque de hora real, para
+  // detectar horas con más/menos flujo de camiones y horas de espera.
+  function camionesPorHora(turnos) {
+    const registros = [];
+    (turnos || []).forEach(t => (t.registros || []).forEach(r => registros.push(r)));
+    if (!registros.length) return [];
+    const buckets = {};
+    registros.forEach(r => {
+      if (!r.ts) return;
+      const d = new Date(r.ts);
+      const key = d.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+      if (!buckets[key]) buckets[key] = { key, count: 0, toneladas: 0 };
+      buckets[key].count++;
+      buckets[key].toneladas += Number(r.toneladas) || 0;
+    });
+    return Object.values(buckets).sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  function fmtBloqueHora(key) {
+    // key: YYYY-MM-DDTHH
+    const d = new Date(key + ':00:00');
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' }) + ' ' + String(d.getHours()).padStart(2, '0') + ':00';
+  }
+
   function totalToneladas(buque) {
     if (!buque) return 0;
     const bodegas = buque.bodegas ? Object.values(buque.bodegas).reduce((s, b) => s + (Number(b.tonAcumulado) || 0), 0) : 0;
@@ -433,8 +457,8 @@ const HTP = (() => {
     turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, cerrarTurno, aprobarTurno, rechazarTurno, crearTurnoHistorico,
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
-    totalToneladas, sumarAcero, avanceBodega, estadoBodega, calcularTiempos, calcularRates, calcularRendimientoPorTurnos,
-    fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, hoyISO, turnoActualNum,
+    totalToneladas, sumarAcero, avanceBodega, estadoBodega, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, camionesPorHora,
+    fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, hoyISO, turnoActualNum,
     toast, openModal, closeModal, confirmar
   };
 })();
