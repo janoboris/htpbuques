@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HTP · Gerencia</title>
+<link rel="stylesheet" href="htp-style.css">
+<style>
+  .bodega-card { background: var(--bg-panel-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; }
+  .bodega-card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .bodega-card .head .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
+  .bodega-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px) { .bodega-grid { grid-template-columns: 1fr 1fr; } }
+  .buque-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .buque-card-head .info .n { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
+  .buque-card-head .info .s { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+  .filtro-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filtro-bar select, .filtro-bar input { width: auto; flex: 1; min-width: 120px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; font-size: 13px; }
+  .info-grid .l { color: var(--ink-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .info-grid .v { color: var(--ink-bright); font-weight: 600; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="htp-topbar">
+  <a href="index.html" class="htp-brand">
+    <div class="htp-mark">HTP</div>
+    <div class="htp-brand-text"><div class="perfil">Gerencia</div><div class="sub" id="nombreUsuario">—</div></div>
+  </a>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <div class="htp-live off" id="liveTag"><span class="dot"></span><span id="liveTxt">conectando</span></div>
+    <a href="index.html" class="btn-icon-exit" title="Salir" onclick="HTP.logout()">⎋</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="activos">Buques activos</button>
+  <button class="tab-btn" data-tab="historico">Histórico</button>
+</div>
+
+<div class="htp-container">
+  <div class="tab-pane active" id="pane-activos"><div id="listaActivos"></div></div>
+  <div class="tab-pane" id="pane-historico">
+    <div class="card">
+      <div class="filtro-bar">
+        <input id="hFiltroNombre" placeholder="Buscar por nombre…" oninput="Ger.renderHistorico()">
+        <select id="hFiltroMaterial" onchange="Ger.renderHistorico()"><option value="">Material: todos</option><option value="granel">Granel</option><option value="acero">Acero</option></select>
+        <select id="hFiltroFaena" onchange="Ger.renderHistorico()"><option value="">Faena: todas</option><option value="descarga">Descarga</option><option value="carga">Carga</option><option value="mixto">Mixto</option></select>
+      </div>
+      <div id="listaHistorico"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="htp-core.js"></script>
+<script>
+HTP.init();
+const usuario = HTP.getUsuario();
+if (!usuario || usuario.perfil !== 'gerencia') location.href = 'index.html';
+document.getElementById('nombreUsuario').textContent = usuario ? usuario.nombre : '';
+
+HTP.onLiveChange(on => {
+  document.getElementById('liveTag').className = 'htp-live ' + (on ? 'on' : 'off');
+  document.getElementById('liveTxt').textContent = on ? 'en vivo' : 'sin conexión';
+});
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+let BUQUES = [], detUnsubs = {}, turnoUnsubs = {}, TODOS_TURNOS = [];
+
+HTP.listenBuques(bs => { BUQUES = bs; Ger.renderActivos(); Ger.renderHistorico(); });
+HTP.listenTodosTurnos(ts => { TODOS_TURNOS = ts; Ger.renderActivos(); Ger.renderHistorico(); });
+
+const Ger = {
+  renderActivos() {
+    const activos = BUQUES.filter(b => b.estado === 'abierto' || b.estado === 'gira');
+    const cont = document.getElementById('listaActivos');
+    if (!activos.length) {
+      cont.innerHTML = `<div class="card"><div class="empty-state"><div class="icon">🚢</div><div class="t">No hay buques activos</div></div></div>`;
+      return;
+    }
+    cont.innerHTML = activos.map(b => {
+      const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      return `
+      <div class="card">
+        <div class="buque-card-head" onclick="Ger.toggle('${b.id}')">
+          <div class="info">
+            <div class="n">${b.nombre} ${b.voyage || ''}</div>
+            <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtDuracion(r.horas * 60)} efectivas · ${r.turnos} turnos</div>
+          </div>
+          ${b.estado === 'gira' ? '<span class="badge badge-warn">En gira</span>' : '<span class="badge badge-ok">Operando</span>'}
+        </div>
+        <div class="kpi-grid" style="margin-top:12px;">
+          <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento MT/h</div></div>
+          <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate * 24)}</div><div class="l">Rendimiento / día</div></div>
+          <div class="kpi"><div class="v mono">${HTP.fmtPct(r.productividad)}%</div><div class="l">Productividad</div></div>
+        </div>
+        <div class="hidden" id="detalle-${b.id}" style="margin-top:14px;"></div>
+      </div>`;
+    }).join('');
+  },
+
+  toggle(id) {
+    const el = document.getElementById('detalle-' + id);
+    const abierto = !el.classList.contains('hidden');
+    if (abierto) {
+      el.classList.add('hidden'); el.innerHTML = '';
+      if (detUnsubs[id]) detUnsubs[id]();
+      if (turnoUnsubs[id]) turnoUnsubs[id]();
+      return;
+    }
+    el.classList.remove('hidden');
+    if (detUnsubs[id]) detUnsubs[id]();
+    let ultimasDet = [];
+    detUnsubs[id] = HTP.listenDetenciones(id, ds => { ultimasDet = ds; Ger.renderDetalle(id, ultimasDet); });
+    if (turnoUnsubs[id]) turnoUnsubs[id]();
+    turnoUnsubs[id] = HTP.listenTurnosDeBuque(id, () => Ger.renderDetalle(id, ultimasDet));
+  },
+
+  renderDetalle(id, detenciones) {
+    const b = BUQUES.find(x => x.id === id);
+    if (!b) return;
+    const el = document.getElementById('detalle-' + id);
+    if (!el) return;
+    const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === id).sort((a,x) => (a.fecha+a.turno).localeCompare(x.fecha+x.turno));
+    const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+    const at = b.atraque || {}, de = b.desatraque || {};
+
+    el.innerHTML = `
+      <div class="divider"></div>
+      <div class="card-title">Información general</div>
+      <div class="info-grid" style="margin-bottom:16px;">
+        <div><div class="l">Nombre</div><div class="v">${b.nombre}</div></div>
+        <div><div class="l">Viaje</div><div class="v">${b.voyage || '—'}</div></div>
+        <div><div class="l">Material</div><div class="v">${b.tipoGranel}</div></div>
+        <div><div class="l">Faena</div><div class="v">${b.tipoOperacion}</div></div>
+        <div><div class="l">Atraque</div><div class="v">${at.fecha ? HTP.fmtFechaHora(at.fecha) : '—'}</div></div>
+        <div><div class="l">Práctico atraque</div><div class="v">${at.practico || '—'}</div></div>
+        <div><div class="l">Desatraque</div><div class="v">${de.fecha ? HTP.fmtFechaHora(de.fecha) : '—'}</div></div>
+        <div><div class="l">Práctico desatraque</div><div class="v">${de.practico || '—'}</div></div>
+        <div><div class="l">Rate programado</div><div class="v">${HTP.fmtRate(b.rateMeta)} MT/día</div></div>
+      </div>
+
+      <div class="card-title">Estado bodegas</div>
+      <div class="bodega-grid" style="margin-bottom:16px;">
+        ${Object.values(b.bodegas || {}).filter(x => x.activa).map(bod => {
+          const avance = HTP.avanceBodega(bod);
+          const estado = HTP.estadoBodega(bod);
+          const badgeClass = estado === 'finalizada' ? 'badge-ok' : estado === 'trabajando' ? 'badge-info' : 'badge-muted';
+          return `<div class="bodega-card">
+            <div class="head"><span class="n">${bod.nombre}</span><span class="badge ${badgeClass}">${estado}</span></div>
+            <div class="bar ${estado === 'finalizada' ? 'done' : ''}"><span style="width:${avance}%"></span></div>
+            <div class="mono" style="font-size:12px; margin-top:6px; color:var(--ink-dim);">${HTP.fmtTon(bod.tonAcumulado)} / ${HTP.fmtTon(bod.tonObjetivo)} MT · ${avance.toFixed(0)}%</div>
+          </div>`;
+        }).join('') || '<p class="muted">Sin bodegas activas</p>'}
+      </div>
+
+      <div class="card-title">Turnos</div>
+      <div style="margin-bottom:16px;">
+        ${turnosBuque.length ? turnosBuque.map(t => `
+          <div class="row-item">
+            <div class="main"><div class="t">Turno ${t.turno} · ${t.fecha}</div><div class="s">${t.observacionCierre || ''}</div></div>
+            <div class="side mono">${HTP.fmtTon(t.totalToneladas)} MT · ${t.horasEfectivas ?? '—'} h</div>
+          </div>`).join('') : '<p class="muted" style="padding:10px 0;">Sin turnos registrados</p>'}
+      </div>
+
+      <div class="card-title">Detenciones</div>
+      <div style="margin-bottom:16px;">
+        ${detenciones.length ? detenciones.map(d => `
+          <div class="row-item">
+            <div class="main"><div class="t">${d.motivo}</div><div class="s">${HTP.fmtFechaHora(d.horaInicio)} → ${d.horaTermino ? HTP.fmtFechaHora(d.horaTermino) : 'en curso'}</div></div>
+            <span class="badge ${d.afectaRate ? 'badge-bad' : 'badge-muted'}">${d.afectaRate ? 'Afecta rate' : 'No afecta'}</span>
+          </div>`).join('') : '<p class="muted" style="padding:10px 0;">Sin detenciones</p>'}
+      </div>
+
+      <div class="card-title">KPIs (rendimiento por turno)</div>
+      <div class="kpi-grid cols-4">
+        <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate)}</div><div class="l">MT / hora</div></div>
+        <div class="kpi"><div class="v mono">${HTP.fmtTon(r.rate * 24)}</div><div class="l">MT / día</div></div>
+        <div class="kpi"><div class="v mono">${HTP.fmtDuracion(r.horas * 60)}</div><div class="l">Horas efectivas</div></div>
+        <div class="kpi"><div class="v mono">${HTP.fmtPct(r.productividad)}%</div><div class="l">Productividad</div></div>
+      </div>
+    `;
+  },
+
+  renderHistorico() {
+    const cerrados = BUQUES.filter(b => b.estado === 'cerrado');
+    const fn = (document.getElementById('hFiltroNombre').value || '').toUpperCase();
+    const fm = document.getElementById('hFiltroMaterial').value;
+    const ff = document.getElementById('hFiltroFaena').value;
+    const filtrados = cerrados.filter(b =>
+      (!fn || b.nombre.includes(fn)) && (!fm || b.tipoGranel === fm) && (!ff || b.tipoOperacion === ff)
+    );
+    const cont = document.getElementById('listaHistorico');
+    if (!filtrados.length) { cont.innerHTML = '<p class="muted center" style="padding:20px 0;">Sin resultados</p>'; return; }
+    cont.innerHTML = filtrados.map(b => {
+      const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      return `<div class="row-item">
+        <div class="main"><div class="t">${b.nombre} ${b.voyage || ''}</div>
+          <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtFechaHora(b.fechaCierre)} · rendimiento ${HTP.fmtRate(r.rate)} MT/h</div></div>
+        <div class="side mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.ton)} MT</div>
+      </div>`;
+    }).join('');
+  }
+};
+</script>
+</body>
+</html>

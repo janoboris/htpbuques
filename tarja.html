@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HTP · Tarja</title>
+<link rel="stylesheet" href="htp-style.css">
+<style>
+  .buque-pick { background: var(--bg-panel); border: 1.5px solid var(--border-soft); border-radius: var(--radius-md); padding: 18px; margin-bottom: 12px; cursor: pointer; }
+  .buque-pick:active { transform: scale(0.98); }
+  .buque-pick .n { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
+  .buque-pick .s { font-size: 12.5px; color: var(--ink-dim); margin-top: 3px; }
+
+  .turno-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 14px; }
+  .turno-banner.off { background: var(--warn-bg); border: 1px solid rgba(224,160,48,0.35); }
+  .turno-banner.on { background: var(--ok-bg); border: 1px solid rgba(47,184,114,0.35); }
+  .turno-banner .t { font-size: 13.5px; font-weight: 700; }
+  .turno-banner.off .t { color: var(--warn); }
+  .turno-banner.on .t { color: var(--ok); }
+
+  .bodega-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bodega-pick button { background: var(--bg-panel-2); border: 1.5px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; color: var(--ink); text-align: left; cursor: pointer; }
+  .bodega-pick button.sel { border-color: var(--forge); background: rgba(232,112,62,0.1); }
+  .bodega-pick button .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
+  .bodega-pick button .s { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+
+  .total-preview { text-align: center; padding: 16px; background: var(--bg-panel-2); border-radius: var(--radius-sm); margin: 12px 0; }
+  .total-preview .v { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--forge-light); }
+  .total-preview .l { font-size: 11px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  .registros-mini .row-item .t { font-size: 13.5px; }
+</style>
+</head>
+<body>
+
+<div class="htp-topbar">
+  <a href="index.html" class="htp-brand">
+    <div class="htp-mark">HTP</div>
+    <div class="htp-brand-text"><div class="perfil">Tarja</div><div class="sub" id="nombreUsuario">—</div></div>
+  </a>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <div class="htp-live off" id="liveTag"><span class="dot"></span><span id="liveTxt">conectando</span></div>
+    <a href="index.html" class="btn-icon-exit" title="Salir" onclick="HTP.logout()">⎋</a>
+  </div>
+</div>
+
+<div class="htp-container">
+
+  <!-- Selección de buque -->
+  <div id="vistaSeleccion">
+    <div class="card-title" style="margin: 4px 0 12px;">Seleccionar buque activo</div>
+    <div id="listaBuquesPick"></div>
+  </div>
+
+  <!-- Vista de operación -->
+  <div id="vistaOperacion" class="hidden">
+
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div style="font-size:17px; font-weight:700; color:var(--ink-bright);" id="opNombreBuque">—</div>
+          <div class="muted" style="font-size:12.5px; margin-top:2px;" id="opDescBuque">—</div>
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="Tarja.cambiarBuque()">Cambiar</button>
+      </div>
+    </div>
+
+    <div id="giraAviso" class="card hidden" style="border-color: rgba(224,160,48,0.4); background: var(--warn-bg);">
+      <strong style="color:var(--warn);">⏸ Buque en gira</strong>
+      <p class="muted" style="font-size:13px; margin-top:4px;">No se pueden registrar movimientos mientras el buque está pausado. Informa al Jefe de Turno si esto no es correcto.</p>
+    </div>
+
+    <div id="turnoBanner" class="turno-banner off">
+      <div class="t" id="turnoTexto">Turno no iniciado</div>
+      <button class="btn btn-accent btn-sm" id="btnAbrirTurno" onclick="Tarja.abrirTurno()">Abrir turno</button>
+    </div>
+
+    <div id="formularioRegistro" class="hidden">
+
+      <!-- GRANEL -->
+      <div id="formGranel" class="hidden">
+        <div class="card">
+          <div class="card-title">Camión</div>
+          <div id="camionPickGranel"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Bodega</div>
+          <div class="bodega-pick" id="bodegaPickGranel"></div>
+        </div>
+        <div class="card" id="pctRestanteCard">
+          <div class="card-title">% material restante en bodega</div>
+          <input id="pctRestanteInput" class="mono" type="number" min="0" max="100" placeholder="Ej: 35">
+        </div>
+        <div class="card">
+          <div class="card-title">Toneladas del viaje</div>
+          <input id="tonGranelInput" class="mono" type="number" inputmode="decimal" placeholder="0.0" style="font-size:20px; text-align:center;">
+        </div>
+        <div class="card">
+          <div class="card-title">Gang / cuadrilla (opcional)</div>
+          <input id="gangGranelInput" placeholder="Ej: Gang N°1">
+        </div>
+        <button class="btn btn-accent btn-block" onclick="Tarja.registrarGranel()">✅ Registrar viaje</button>
+      </div>
+
+      <!-- ACERO -->
+      <div id="formAcero" class="hidden">
+        <div class="card">
+          <div class="card-title">Camión</div>
+          <div id="camionPickAcero"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Bodega</div>
+          <div class="bodega-pick" id="bodegaPickAcero"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Tipo de acero</div>
+          <div class="seg">
+            <button type="button" class="active" onclick="Tarja.setTipoAcero('rollos', this)">Rollos</button>
+            <button type="button" onclick="Tarja.setTipoAcero('barras', this)">Barras</button>
+            <button type="button" onclick="Tarja.setTipoAcero('barraLarga', this)">Barra larga</button>
+            <button type="button" onclick="Tarja.setTipoAcero('otro', this)">Otro</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="field-row">
+            <div class="field"><label>Cantidad de bultos</label><input id="aceroBultos" class="mono" type="number" inputmode="numeric" oninput="Tarja.calcularAcero()"></div>
+            <div class="field"><label>Peso unitario (MT)</label><input id="aceroPesoUnit" class="mono" type="number" step="0.001" oninput="Tarja.calcularAcero()"></div>
+          </div>
+          <div class="total-preview"><div class="v mono" id="aceroTotal">0.0</div><div class="l">Toneladas totales</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Gang / cuadrilla (opcional)</div>
+          <input id="gangAceroInput" placeholder="Ej: Gang N°1">
+        </div>
+        <button class="btn btn-accent btn-block" onclick="Tarja.registrarAcero()">✅ Registrar carga</button>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="card-title">Registros de este turno <span class="mono" id="turnoTotalMini" style="text-transform:none; font-weight:700; color:var(--ink-bright);"></span></div>
+      <div id="registrosDelTurno" class="registros-mini"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="fab-bar hidden" id="fabCerrarTurno">
+  <button class="btn btn-ghost btn-block" onclick="Tarja.abrirModalNuevoCamion()">+ Nuevo camión</button>
+  <button class="btn btn-ok btn-block" onclick="Tarja.abrirModalCerrarTurno()">Cerrar turno</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="htp-core.js"></script>
+<script>
+HTP.init();
+const usuario = HTP.getUsuario();
+if (!usuario || usuario.perfil !== 'tarja') location.href = 'index.html';
+document.getElementById('nombreUsuario').textContent = usuario ? usuario.nombre : '';
+
+HTP.onLiveChange(on => {
+  document.getElementById('liveTag').className = 'htp-live ' + (on ? 'on' : 'off');
+  document.getElementById('liveTxt').textContent = on ? 'en vivo' : 'sin conexión';
+});
+
+let BUQUES = [], CAMIONES = [], buqueActual = null, turnoActual = null, turnoUnsub = null;
+let bodegaSeleccionada = null, camionSeleccionado = null, tipoAceroSel = 'rollos';
+
+HTP.listenBuques(bs => {
+  BUQUES = bs;
+  Tarja.renderSeleccion();
+  if (buqueActual) {
+    const upd = bs.find(b => b.id === buqueActual.id);
+    if (upd) { buqueActual = upd; Tarja.renderOperacion(); }
+  }
+});
+HTP.listenCamiones(cs => { CAMIONES = cs; if (buqueActual) Tarja.renderCamionPicks(); });
+
+const Tarja = {
+  renderSeleccion() {
+    const cont = document.getElementById('listaBuquesPick');
+    const activos = BUQUES.filter(b => b.estado === 'abierto' || b.estado === 'gira');
+    if (!activos.length) {
+      cont.innerHTML = `<div class="card"><div class="empty-state"><div class="icon">⚠️</div><div class="t">No existe buque activo</div><div class="s">Informar a Jefe de Turno que no existe buque activo.</div></div></div>`;
+      return;
+    }
+    cont.innerHTML = activos.map(b => {
+      const ton = HTP.totalToneladas(b);
+      return `<div class="buque-pick" onclick="Tarja.seleccionarBuque('${b.id}')">
+        <div class="n">${b.nombre} ${b.voyage || ''} ${b.estado === 'gira' ? '<span class=\"badge badge-warn\">Gira</span>' : ''}</div>
+        <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(ton)} MT acumuladas</div>
+      </div>`;
+    }).join('');
+  },
+
+  seleccionarBuque(id) {
+    buqueActual = BUQUES.find(b => b.id === id);
+    document.getElementById('vistaSeleccion').classList.add('hidden');
+    document.getElementById('vistaOperacion').classList.remove('hidden');
+    Tarja.renderOperacion();
+    Tarja.suscribirTurno();
+    Tarja._turnoActualId = HTP.turnoDocId(buqueActual.id, HTP.hoyISO(), HTP.turnoActualNum());
+  },
+  cambiarBuque() {
+    if (turnoUnsub) turnoUnsub();
+    buqueActual = null; turnoActual = null;
+    document.getElementById('vistaOperacion').classList.add('hidden');
+    document.getElementById('vistaSeleccion').classList.remove('hidden');
+  },
+
+  renderOperacion() {
+    if (!buqueActual) return;
+    document.getElementById('opNombreBuque').textContent = `${buqueActual.nombre} ${buqueActual.voyage || ''}`;
+    document.getElementById('opDescBuque').textContent = `${buqueActual.tipoOperacion} · ${buqueActual.tipoGranel} · ${HTP.fmtTon(HTP.totalToneladas(buqueActual))} MT acumuladas`;
+    document.getElementById('giraAviso').classList.toggle('hidden', buqueActual.estado !== 'gira');
+    document.getElementById('formGranel').classList.toggle('hidden', buqueActual.tipoGranel !== 'granel');
+    document.getElementById('formAcero').classList.toggle('hidden', buqueActual.tipoGranel !== 'acero');
+    if (buqueActual.tipoGranel === 'acero') {
+      document.getElementById('aceroPesoUnit').value = buqueActual.acero ? buqueActual.acero.rolloPeso : 12.5;
+      Tarja.calcularAcero();
+    }
+    Tarja.renderBodegaPick();
+    Tarja.renderCamionPicks();
+  },
+
+  renderBodegaPick() {
+    const activas = Object.values(buqueActual.bodegas || {}).filter(b => b.activa);
+    const html = activas.map(b => `
+      <button type="button" class="${bodegaSeleccionada === b.id ? 'sel' : ''}" onclick="Tarja.elegirBodega('${b.id}')">
+        <div class="n">${b.nombre}</div>
+        <div class="s">${b.tipo === 'descarga' ? 'Descarga' : 'Carga'} · ${HTP.fmtTon(b.tonAcumulado)}/${HTP.fmtTon(b.tonObjetivo)} MT</div>
+      </button>`).join('') || '<p class="muted">Sin bodegas activas</p>';
+    ['bodegaPickGranel', 'bodegaPickAcero'].forEach(idc => {
+      const cont = document.getElementById(idc);
+      if (cont) cont.innerHTML = html;
+    });
+    Tarja.actualizarPctCard();
+  },
+  elegirBodega(id) {
+    bodegaSeleccionada = id;
+    Tarja.renderBodegaPick();
+  },
+  actualizarPctCard() {
+    const b = bodegaSeleccionada && buqueActual.bodegas[bodegaSeleccionada];
+    document.getElementById('pctRestanteCard').classList.toggle('hidden', !(b && b.tipo === 'descarga'));
+  },
+
+  renderCamionPicks() {
+    ['camionPickGranel', 'camionPickAcero'].forEach(idc => {
+      const cont = document.getElementById(idc);
+      if (!cont) return;
+      cont.innerHTML = `
+        <select onchange="Tarja.elegirCamion(this.value)">
+          <option value="">— Seleccionar patente —</option>
+          ${CAMIONES.map(c => `<option value="${c.patente}" ${camionSeleccionado === c.patente ? 'selected' : ''}>${c.patente} (neto ${HTP.fmtTon(c.pesoNeto)} kg)</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px;" onclick="Tarja.abrirModalNuevoCamion()">+ Agregar camión nuevo</button>`;
+    });
+  },
+  elegirCamion(p) { camionSeleccionado = p || null; },
+
+  abrirModalNuevoCamion() {
+    HTP.openModal(`
+      <div class="modal-head"><h3>Nuevo camión</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <div class="field"><label>Patente</label><input id="mcPatente" class="mono" placeholder="AB1234" style="text-transform:uppercase;"></div>
+      <div class="field-row">
+        <div class="field"><label>Tara vacía (kg)</label><input id="mcTaraVacia" class="mono" type="number" inputmode="decimal"></div>
+        <div class="field"><label>Tara llena (kg)</label><input id="mcTaraLlena" class="mono" type="number" inputmode="decimal"></div>
+      </div>
+      <button class="btn btn-accent btn-block" onclick="Tarja.guardarNuevoCamion()">Guardar camión</button>
+    `);
+  },
+  async guardarNuevoCamion() {
+    const p = document.getElementById('mcPatente').value.trim();
+    const tv = document.getElementById('mcTaraVacia').value, tl = document.getElementById('mcTaraLlena').value;
+    if (!p || !tv || !tl) { HTP.toast('Completa todos los campos', 'bad'); return; }
+    if (Number(tl) <= Number(tv)) { HTP.toast('La tara llena debe ser mayor a la vacía', 'bad'); return; }
+    const c = await HTP.guardarCamion(p, tv, tl);
+    camionSeleccionado = c.patente;
+    HTP.closeModal();
+    HTP.toast('Camión guardado', 'ok');
+  },
+
+  /* ---------- TURNO ---------- */
+  suscribirTurno() {
+    if (turnoUnsub) turnoUnsub();
+    const fecha = HTP.hoyISO(), num = HTP.turnoActualNum();
+    const id = HTP.turnoDocId(buqueActual.id, fecha, num);
+    turnoUnsub = firebase.firestore().collection('turnos').doc(id).onSnapshot(d => {
+      turnoActual = d.exists ? { id: d.id, ...d.data() } : null;
+      Tarja.renderTurno();
+    });
+  },
+
+  async abrirTurno() {
+    const fecha = HTP.hoyISO(), num = HTP.turnoActualNum();
+    await HTP.abrirTurno(buqueActual.id, fecha, num, usuario.nombre);
+    HTP.toast('Turno abierto', 'ok');
+  },
+  renderTurno() {
+    const banner = document.getElementById('turnoBanner');
+    const form = document.getElementById('formularioRegistro');
+    const fab = document.getElementById('fabCerrarTurno');
+    if (!turnoActual || (turnoActual.estado !== 'abierto' && turnoActual.estado !== 'pendiente')) {
+      banner.className = 'turno-banner off';
+      document.getElementById('turnoTexto').textContent = `Turno ${HTP.turnoActualNum()} no iniciado`;
+      document.getElementById('btnAbrirTurno').classList.remove('hidden');
+      form.classList.add('hidden'); fab.classList.add('hidden');
+      document.getElementById('registrosDelTurno').innerHTML = '';
+      document.getElementById('turnoTotalMini').textContent = '';
+      return;
+    }
+    if (turnoActual.estado === 'pendiente') {
+      banner.className = 'turno-banner off';
+      document.getElementById('turnoTexto').textContent = `Turno ${turnoActual.turno} cerrado — esperando aprobación`;
+      document.getElementById('btnAbrirTurno').classList.add('hidden');
+      form.classList.add('hidden'); fab.classList.add('hidden');
+    } else {
+      banner.className = 'turno-banner on';
+      document.getElementById('turnoTexto').textContent = `Turno ${turnoActual.turno} en curso — abierto ${HTP.fmtHora(turnoActual.horaInicio)}`;
+      document.getElementById('btnAbrirTurno').classList.add('hidden');
+      form.classList.remove('hidden');
+      fab.classList.toggle('hidden', buqueActual.estado === 'gira');
+    }
+    Tarja.renderRegistros();
+  },
+  renderRegistros() {
+    const cont = document.getElementById('registrosDelTurno');
+    const regs = (turnoActual.registros || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    document.getElementById('turnoTotalMini').textContent = `${HTP.fmtTon(turnoActual.totalToneladas)} MT · ${turnoActual.viajes} viajes`;
+    if (!regs.length) { cont.innerHTML = '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>'; return; }
+    cont.innerHTML = regs.map(r => `
+      <div class="row-item">
+        <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${HTP.fmtHora(r.ts)}</div></div>
+        <div class="side mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</div>
+      </div>`).join('');
+  },
+
+  /* ---------- REGISTRO GRANEL ---------- */
+  async registrarGranel() {
+    if (buqueActual.estado === 'gira') { HTP.toast('Buque en gira, no se puede registrar', 'bad'); return; }
+    if (!camionSeleccionado) { HTP.toast('Selecciona un camión', 'bad'); return; }
+    if (!bodegaSeleccionada) { HTP.toast('Selecciona una bodega', 'bad'); return; }
+    const ton = Number(document.getElementById('tonGranelInput').value);
+    if (!ton || ton <= 0) { HTP.toast('Ingresa las toneladas del viaje', 'bad'); return; }
+    const bod = buqueActual.bodegas[bodegaSeleccionada];
+    let pct = null;
+    if (bod.tipo === 'descarga') {
+      const pctVal = document.getElementById('pctRestanteInput').value;
+      if (pctVal === '') { HTP.toast('Ingresa el % restante de la bodega', 'bad'); return; }
+      pct = Number(pctVal);
+    }
+    await HTP.agregarRegistro(turnoActual.id, {
+      tipo: 'granel', camion: camionSeleccionado, bodegaId: bodegaSeleccionada,
+      toneladas: ton, pctRestante: pct, gang: document.getElementById('gangGranelInput').value.trim(),
+      detalle: `${bod.nombre} (${bod.tipo})`
+    });
+    await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, ton, pct);
+    document.getElementById('tonGranelInput').value = '';
+    if (document.getElementById('pctRestanteInput')) document.getElementById('pctRestanteInput').value = '';
+    HTP.toast('Viaje registrado', 'ok');
+  },
+
+  /* ---------- REGISTRO ACERO ---------- */
+  setTipoAcero(tipo, el) {
+    tipoAceroSel = tipo;
+    el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    const cfg = buqueActual.acero || { rolloPeso: 12.5, barraPeso: 0.045, barraLargaPeso: 0.085 };
+    const pesos = { rollos: cfg.rolloPeso, barras: cfg.barraPeso, barraLarga: cfg.barraLargaPeso, otro: '' };
+    document.getElementById('aceroPesoUnit').value = pesos[tipo];
+    Tarja.calcularAcero();
+  },
+  calcularAcero() {
+    const b = Number(document.getElementById('aceroBultos').value) || 0;
+    const p = Number(document.getElementById('aceroPesoUnit').value) || 0;
+    document.getElementById('aceroTotal').textContent = HTP.fmtTon(b * p);
+  },
+  async registrarAcero() {
+    if (buqueActual.estado === 'gira') { HTP.toast('Buque en gira, no se puede registrar', 'bad'); return; }
+    if (!camionSeleccionado) { HTP.toast('Selecciona un camión', 'bad'); return; }
+    if (!bodegaSeleccionada) { HTP.toast('Selecciona una bodega', 'bad'); return; }
+    const bultos = Number(document.getElementById('aceroBultos').value) || 0;
+    const peso = Number(document.getElementById('aceroPesoUnit').value) || 0;
+    const total = bultos * peso;
+    if (!bultos || !peso || total <= 0) { HTP.toast('Completa bultos y peso unitario', 'bad'); return; }
+    const bod = buqueActual.bodegas[bodegaSeleccionada];
+    await HTP.agregarRegistro(turnoActual.id, {
+      tipo: 'acero', camion: camionSeleccionado, aceroTipo: tipoAceroSel, bultos, pesoUnitario: peso,
+      bodegaId: bodegaSeleccionada, gang: document.getElementById('gangAceroInput').value.trim(),
+      toneladas: total, detalle: `${bod.nombre} · ${bultos} × ${tipoAceroSel}`
+    });
+    await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, total, null);
+    document.getElementById('aceroBultos').value = '';
+    Tarja.calcularAcero();
+    HTP.toast('Carga registrada', 'ok');
+  },
+
+  /* ---------- CIERRE DE TURNO ---------- */
+  abrirModalCerrarTurno() {
+    const horasAuto = turnoActual.horaInicio ? ((new Date() - new Date(turnoActual.horaInicio)) / 3600000).toFixed(1) : '';
+    HTP.openModal(`
+      <div class="modal-head"><h3>Cerrar turno ${turnoActual.turno}</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <div class="kpi-grid" style="margin-bottom:16px;">
+        <div class="kpi"><div class="v mono">${HTP.fmtTon(turnoActual.totalToneladas)}</div><div class="l">Toneladas</div></div>
+        <div class="kpi"><div class="v mono">${turnoActual.viajes}</div><div class="l">Viajes</div></div>
+        <div class="kpi"><div class="v mono">${HTP.fmtHora(turnoActual.horaInicio)}</div><div class="l">Inicio</div></div>
+      </div>
+      <div class="field"><label>Horas efectivas del turno</label><input id="cierreHoras" class="mono" type="number" step="0.1" value="${horasAuto}"></div>
+      <p class="muted" style="font-size:12px; margin-top:-8px; margin-bottom:14px;">Ajusta si hubo detenciones que no corresponden a rendimiento (ej. atrasos por movimiento de pontones del buque).</p>
+      <div class="field"><label>Observaciones del turno (opcional)</label><textarea id="cierreObs" rows="3"></textarea></div>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">El cierre queda pendiente de aprobación del Supervisor.</p>
+      <button class="btn btn-ok btn-block" onclick="Tarja.confirmarCierre()">Enviar cierre de turno</button>
+    `);
+  },
+  async confirmarCierre() {
+    const obs = document.getElementById('cierreObs').value.trim();
+    const horas = document.getElementById('cierreHoras').value;
+    await HTP.cerrarTurno(turnoActual.id, obs, horas);
+    HTP.closeModal();
+    HTP.toast('Turno cerrado y enviado a aprobación', 'ok');
+  }
+};
+
+setInterval(() => {
+  if (!buqueActual) return;
+  const idAhora = HTP.turnoDocId(buqueActual.id, HTP.hoyISO(), HTP.turnoActualNum());
+  if (idAhora !== Tarja._turnoActualId) {
+    Tarja._turnoActualId = idAhora;
+    Tarja.suscribirTurno();
+  }
+}, 60000);
+</script>
+</body>
+</html>

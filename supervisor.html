@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HTP · Supervisor</title>
+<link rel="stylesheet" href="htp-style.css">
+<style>
+  .bodega-card { background: var(--bg-panel-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; }
+  .bodega-card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .bodega-card .head .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
+  .bodega-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px) { .bodega-grid { grid-template-columns: 1fr 1fr; } }
+  .buque-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .buque-card-head .info .n { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
+  .buque-card-head .info .s { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+  .accion-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .filtro-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filtro-bar select, .filtro-bar input { width: auto; flex: 1; min-width: 120px; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.data th { text-align: left; font-size: 10.5px; text-transform: uppercase; color: var(--ink-dim); padding: 8px 6px; border-bottom: 1px solid var(--border-soft); }
+  table.data td { padding: 9px 6px; border-bottom: 1px solid var(--border-soft); color: var(--ink); }
+  table.data tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<div class="htp-topbar">
+  <a href="index.html" class="htp-brand">
+    <div class="htp-mark">HTP</div>
+    <div class="htp-brand-text"><div class="perfil">Supervisor</div><div class="sub" id="nombreUsuario">—</div></div>
+  </a>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <div class="htp-live off" id="liveTag"><span class="dot"></span><span id="liveTxt">conectando</span></div>
+    <a href="index.html" class="btn-icon-exit" title="Salir" onclick="HTP.logout()">⎋</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="activos">Buques activos</button>
+  <button class="tab-btn" data-tab="turnos">Cierres de turno</button>
+  <button class="tab-btn" data-tab="detenciones">Detenciones</button>
+  <button class="tab-btn" data-tab="camiones">Flota camiones</button>
+  <button class="tab-btn" data-tab="crear">Crear / cargar buque</button>
+  <button class="tab-btn" data-tab="historico">Histórico</button>
+</div>
+
+<div class="htp-container">
+
+  <!-- ============ TAB: BUQUES ACTIVOS ============ -->
+  <div class="tab-pane active" id="pane-activos">
+    <div id="listaActivos"></div>
+  </div>
+
+  <!-- ============ TAB: CIERRES DE TURNO ============ -->
+  <div class="tab-pane" id="pane-turnos">
+    <div class="card">
+      <div class="card-title">Cierres pendientes de aprobación</div>
+      <div id="listaTurnosPendientes"></div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: DETENCIONES ============ -->
+  <div class="tab-pane" id="pane-detenciones">
+    <div class="card">
+      <div class="card-title">Buque</div>
+      <select id="selBuqueDetencion" onchange="Sup.cambiarBuqueDetencion()"></select>
+    </div>
+    <div class="card">
+      <div class="card-title">Registrar detención <button class="btn btn-accent btn-xs" onclick="Sup.abrirModalDetencion()">+ Nueva</button></div>
+      <div id="listaDetenciones"></div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: FLOTA CAMIONES ============ -->
+  <div class="tab-pane" id="pane-camiones">
+    <div class="card">
+      <div class="card-title">Agregar / actualizar camión</div>
+      <div class="field-row">
+        <div class="field"><label>Patente</label><input id="camPatente" class="mono" placeholder="AB1234" maxlength="8" style="text-transform:uppercase;"></div>
+        <div class="field"><label>Tara vacía (kg)</label><input id="camTaraVacia" class="mono" type="number" inputmode="decimal"></div>
+      </div>
+      <div class="field"><label>Tara llena (kg)</label><input id="camTaraLlena" class="mono" type="number" inputmode="decimal"></div>
+      <button class="btn btn-accent btn-block" onclick="Sup.guardarCamion()">Guardar camión</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Flota registrada</div>
+      <div id="listaCamiones"></div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: CREAR / CARGAR BUQUE ============ -->
+  <div class="tab-pane" id="pane-crear">
+    <div class="card">
+      <div class="card-title">Datos generales</div>
+      <div class="field"><label>Nombre del buque</label><input id="nvNombre" placeholder="Ej: Cape Falcon" style="text-transform:uppercase;"></div>
+      <div class="field"><label>Viaje</label><input id="nvVoyage" placeholder="Ej: V-114"></div>
+      <div class="field-row">
+        <div class="field"><label>Material</label>
+          <select id="nvMaterial" onchange="Sup.toggleMaterial()"><option value="granel">Granel</option><option value="acero">Acero</option></select>
+        </div>
+        <div class="field"><label>Faena</label>
+          <select id="nvFaena"><option value="descarga">Descarga</option><option value="carga">Carga</option><option value="mixto">Mixto</option></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Rate meta (MT/día)</label><input id="nvRateMeta" class="mono" type="number" inputmode="decimal"></div>
+        <div class="field"><label>Inicio programado</label><input id="nvInicioProg" type="datetime-local"></div>
+      </div>
+      <div class="field"><label>Inicio real (dejar vacío si aún no comienza)</label><input id="nvInicioReal" type="datetime-local"></div>
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 4px;">
+        <input type="checkbox" id="nvEsHistorico" style="width:auto;" onchange="Sup.toggleHistorico()"> Cargar como buque histórico (ya finalizado, para base de datos)
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Atraque / desatraque</div>
+      <div class="field-row">
+        <div class="field"><label>Fecha y hora de atraque</label><input id="nvAtraqueFecha" type="datetime-local"></div>
+        <div class="field"><label>Práctico (atraque)</label><input id="nvAtraquePractico" placeholder="Nombre del práctico"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Fecha y hora de desatraque</label><input id="nvDesatraqueFecha" type="datetime-local"></div>
+        <div class="field"><label>Práctico (desatraque)</label><input id="nvDesatraquePractico" placeholder="Nombre del práctico"></div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="nvAceroCard">
+      <div class="card-title">Configuración acero (peso promedio por unidad)</div>
+      <div class="field-row">
+        <div class="field"><label>Rollo (MT)</label><input id="nvRolloPeso" class="mono" type="number" step="0.1" value="12.5"></div>
+        <div class="field"><label>Barra corta (MT)</label><input id="nvBarraPeso" class="mono" type="number" step="0.001" value="0.045"></div>
+      </div>
+      <div class="field"><label>Barra larga (MT)</label><input id="nvBarraLargaPeso" class="mono" type="number" step="0.001" value="0.085"></div>
+    </div>
+
+    <div class="card" id="nvBodegasCard">
+      <div class="card-title">Bodegas</div>
+      <div class="bodega-grid" id="nvBodegas"></div>
+    </div>
+
+    <div id="nvCierreCard" class="card hidden">
+      <div class="card-title">Datos de cierre (buque histórico)</div>
+      <div class="field"><label>Fecha / hora de cierre</label><input id="nvFechaCierre" type="datetime-local"></div>
+    </div>
+
+    <div id="nvTurnosCard" class="card hidden">
+      <div class="card-title">Turnos históricos (uno por fila, como en la tarja de papel) <button class="btn btn-ghost btn-xs" onclick="Sup.agregarFilaTurnoHist()">+ Fila</button></div>
+      <div id="nvTurnosLista" class="stack-sm"></div>
+      <p class="muted" style="font-size:12px; margin-top:10px;">Estos turnos quedan guardados ya aprobados, y suman directo a la tonelada y horas de la bodega elegida. El rendimiento se calcula como toneladas totales ÷ horas efectivas totales.</p>
+    </div>
+
+    <button class="btn btn-accent btn-block" style="margin-top:14px;" onclick="Sup.crearBuque()">Guardar buque</button>
+  </div>
+
+  <!-- ============ TAB: HISTÓRICO ============ -->
+  <div class="tab-pane" id="pane-historico">
+    <div class="card">
+      <div class="filtro-bar">
+        <input id="hFiltroNombre" placeholder="Buscar por nombre…" oninput="Sup.renderHistorico()">
+        <select id="hFiltroMaterial" onchange="Sup.renderHistorico()"><option value="">Material: todos</option><option value="granel">Granel</option><option value="acero">Acero</option></select>
+        <select id="hFiltroFaena" onchange="Sup.renderHistorico()"><option value="">Faena: todas</option><option value="descarga">Descarga</option><option value="carga">Carga</option><option value="mixto">Mixto</option></select>
+      </div>
+      <div id="listaHistorico"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="htp-core.js"></script>
+<script>
+HTP.init();
+const usuario = HTP.getUsuario();
+if (!usuario || usuario.perfil !== 'supervisor') location.href = 'index.html';
+document.getElementById('nombreUsuario').textContent = usuario ? usuario.nombre : '';
+
+HTP.onLiveChange(on => {
+  document.getElementById('liveTag').className = 'htp-live ' + (on ? 'on' : 'off');
+  document.getElementById('liveTxt').textContent = on ? 'en vivo' : 'sin conexión';
+});
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+let BUQUES = [], CAMIONES = [], TURNOS_PEND = [], TODOS_TURNOS = [], detUnsub = null, DETENCIONES = [];
+let nvTurnosHist = [];
+
+HTP.listenBuques(bs => {
+  BUQUES = bs;
+  Sup.renderActivos();
+  Sup.renderHistorico();
+  Sup.poblaSelectBuqueDetencion();
+});
+HTP.listenCamiones(cs => { CAMIONES = cs; Sup.renderCamiones(); });
+HTP.listenTurnosAbiertos(ts => { TURNOS_PEND = ts.filter(t => t.estado === 'pendiente'); Sup.renderTurnosPendientes(); });
+HTP.listenTodosTurnos(ts => { TODOS_TURNOS = ts; Sup.renderActivos(); Sup.renderHistorico(); });
+
+const Sup = {
+
+  /* ---------- BUQUES ACTIVOS ---------- */
+  renderActivos() {
+    const activos = BUQUES.filter(b => b.estado === 'abierto' || b.estado === 'gira');
+    const cont = document.getElementById('listaActivos');
+    if (!activos.length) {
+      cont.innerHTML = `<div class="card"><div class="empty-state"><div class="icon">🚢</div><div class="t">No hay buques activos</div><div class="s">Crea uno en la pestaña "Crear / cargar buque".</div></div></div>`;
+      return;
+    }
+    cont.innerHTML = activos.map(b => {
+      const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      const objetivo = Object.values(b.bodegas).reduce((s, x) => s + (Number(x.tonObjetivo) || 0), 0);
+      const pct = objetivo > 0 ? (r.ton / objetivo * 100).toFixed(1) : '0.0';
+      const at = b.atraque || {}, de = b.desatraque || {};
+      return `
+      <div class="card" id="buqueCard-${b.id}">
+        <div class="buque-card-head" onclick="Sup.toggleDetalle('${b.id}')">
+          <div class="info">
+            <div class="n">${b.nombre} ${b.voyage || ''}</div>
+            <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(r.ton)}/${HTP.fmtTon(objetivo)} MT (${pct}%)</div>
+          </div>
+          ${b.estado === 'gira' ? '<span class="badge badge-warn">En gira</span>' : '<span class="badge badge-ok">Operando</span>'}
+        </div>
+        <div class="hidden" id="detalle-${b.id}" style="margin-top:14px;">
+          <div class="kpi-grid cols-4">
+            <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento</div></div>
+            <div class="kpi"><div class="v mono">${HTP.fmtDuracion(r.horas * 60)}</div><div class="l">Horas efectivas</div></div>
+            <div class="kpi"><div class="v mono">${r.turnos}</div><div class="l">Turnos</div></div>
+            <div class="kpi"><div class="v mono">${HTP.fmtPct(r.productividad)}%</div><div class="l">Productividad</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="info-grid" style="margin-bottom:14px;">
+            <div><div class="l">Atraque</div><div class="v">${at.fecha ? HTP.fmtFechaHora(at.fecha) : '—'} ${at.practico ? '· ' + at.practico : ''}</div></div>
+            <div><div class="l">Desatraque</div><div class="v">${de.fecha ? HTP.fmtFechaHora(de.fecha) : '—'} ${de.practico ? '· ' + de.practico : ''}</div></div>
+          </div>
+          <div class="bodega-grid">
+            ${Object.values(b.bodegas).filter(x => x.activa).map(bod => Sup.bodegaCardHTML(b.id, bod)).join('') || '<p class="muted">Sin bodegas activas</p>'}
+          </div>
+          <div class="accion-row">
+            <button class="btn btn-ghost btn-sm" onclick="Sup.abrirModalEditar('${b.id}')">✏️ Editar datos</button>
+            ${b.estado === 'abierto'
+              ? `<button class="btn btn-ghost btn-sm" onclick="Sup.pausarGira('${b.id}')">⏸ Pausar (gira)</button>`
+              : `<button class="btn btn-ghost btn-sm" onclick="Sup.reanudar('${b.id}')">▶️ Reanudar</button>`}
+            <button class="btn btn-ok btn-sm" onclick="Sup.cerrarBuque('${b.id}')">✅ Cerrar buque</button>
+            <button class="btn btn-bad btn-sm" onclick="Sup.eliminarBuque('${b.id}')">🗑 Eliminar</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  },
+
+  toggleDetalle(id) {
+    const el = document.getElementById('detalle-' + id);
+    el.classList.toggle('hidden');
+  },
+
+  bodegaCardHTML(buqueId, bod) {
+    const avance = HTP.avanceBodega(bod);
+    const estado = HTP.estadoBodega(bod);
+    const badgeClass = estado === 'finalizada' ? 'badge-ok' : estado === 'trabajando' ? 'badge-info' : 'badge-muted';
+    return `
+      <div class="bodega-card">
+        <div class="head"><span class="n">${bod.nombre}</span><span class="badge ${badgeClass}">${estado}</span></div>
+        <div class="bar ${estado === 'finalizada' ? 'done' : ''}"><span style="width:${avance}%"></span></div>
+        <div class="mono" style="font-size:12px; margin-top:6px; color:var(--ink-dim);">
+          ${HTP.fmtTon(bod.tonAcumulado)} / ${HTP.fmtTon(bod.tonObjetivo)} MT
+          ${bod.tipo === 'descarga' && bod.pctRestante !== null && bod.pctRestante !== undefined ? ` · ${bod.pctRestante}% restante` : ''}
+        </div>
+        <button class="btn btn-ghost btn-xs" style="margin-top:8px;" onclick="Sup.abrirModalAjuste('${buqueId}','${bod.id}')">Ajustar tonelaje</button>
+      </div>`;
+  },
+
+  abrirModalAjuste(buqueId, bodegaId) {
+    const b = BUQUES.find(x => x.id === buqueId);
+    const bod = b.bodegas[bodegaId];
+    HTP.openModal(`
+      <div class="modal-head"><h3>Ajustar ${bod.nombre}</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <p class="muted" style="margin-bottom:14px; font-size:13px;">Acumulado actual: <strong class="mono" style="color:var(--ink-bright)">${HTP.fmtTon(bod.tonAcumulado)} MT</strong></p>
+      <div class="field"><label>Sumar / restar toneladas (usa negativo para restar)</label><input id="ajDelta" class="mono" type="number" inputmode="decimal" placeholder="Ej: 50 o -20"></div>
+      <div class="field"><label>Fijar tonelaje objetivo</label><input id="ajObjetivo" class="mono" type="number" inputmode="decimal" value="${bod.tonObjetivo}"></div>
+      ${bod.tipo === 'descarga' ? `<div class="field"><label>% material restante en bodega</label><input id="ajPct" class="mono" type="number" min="0" max="100" value="${bod.pctRestante ?? ''}"></div>` : ''}
+      <button class="btn btn-accent btn-block" onclick="Sup.aplicarAjuste('${buqueId}','${bodegaId}')">Aplicar ajuste</button>
+    `);
+  },
+  async aplicarAjuste(buqueId, bodegaId) {
+    const delta = Number(document.getElementById('ajDelta').value) || 0;
+    const objetivo = document.getElementById('ajObjetivo').value;
+    const pctEl = document.getElementById('ajPct');
+    const pct = pctEl ? (pctEl.value === '' ? null : Number(pctEl.value)) : null;
+    if (delta !== 0 || pct !== null) await HTP.ajustarBodega(buqueId, bodegaId, delta, pct);
+    if (objetivo !== '') await HTP.setBodegaAbsoluto(buqueId, bodegaId, 'tonObjetivo', Number(objetivo));
+    HTP.closeModal();
+    HTP.toast('Bodega ajustada', 'ok');
+  },
+
+  abrirModalEditar(buqueId) {
+    const b = BUQUES.find(x => x.id === buqueId);
+    const at = b.atraque || {}, de = b.desatraque || {};
+    HTP.openModal(`
+      <div class="modal-head"><h3>Editar ${b.nombre}</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <div class="field"><label>Nombre</label><input id="edNombre" value="${b.nombre}"></div>
+      <div class="field"><label>Viaje</label><input id="edVoyage" value="${b.voyage || ''}"></div>
+      <div class="field-row">
+        <div class="field"><label>Rate meta (MT/día)</label><input id="edRate" class="mono" type="number" value="${b.rateMeta}"></div>
+        <div class="field"><label>Inicio real</label><input id="edInicioReal" type="datetime-local" value="${b.fechaInicioReal ? b.fechaInicioReal.slice(0,16) : ''}"></div>
+      </div>
+      <div class="divider"></div>
+      <div class="field-row">
+        <div class="field"><label>Atraque</label><input id="edAtraqueFecha" type="datetime-local" value="${at.fecha ? at.fecha.slice(0,16) : ''}"></div>
+        <div class="field"><label>Práctico (atraque)</label><input id="edAtraquePractico" value="${at.practico || ''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Desatraque</label><input id="edDesatraqueFecha" type="datetime-local" value="${de.fecha ? de.fecha.slice(0,16) : ''}"></div>
+        <div class="field"><label>Práctico (desatraque)</label><input id="edDesatraquePractico" value="${de.practico || ''}"></div>
+      </div>
+      <button class="btn btn-accent btn-block" onclick="Sup.guardarEdicion('${buqueId}')">Guardar cambios</button>
+    `);
+  },
+  async guardarEdicion(buqueId) {
+    const patch = {
+      nombre: document.getElementById('edNombre').value.trim().toUpperCase(),
+      voyage: document.getElementById('edVoyage').value.trim(),
+      rateMeta: Number(document.getElementById('edRate').value) || 0,
+    };
+    const ir = document.getElementById('edInicioReal').value;
+    if (ir) patch.fechaInicioReal = new Date(ir).toISOString();
+    const atf = document.getElementById('edAtraqueFecha').value;
+    const def = document.getElementById('edDesatraqueFecha').value;
+    patch.atraque = { fecha: atf ? new Date(atf).toISOString() : null, practico: document.getElementById('edAtraquePractico').value.trim() };
+    patch.desatraque = { fecha: def ? new Date(def).toISOString() : null, practico: document.getElementById('edDesatraquePractico').value.trim() };
+    await HTP.actualizarBuque(buqueId, patch);
+    HTP.closeModal();
+    HTP.toast('Buque actualizado', 'ok');
+  },
+
+  async pausarGira(id) {
+    const motivo = prompt('Motivo de la gira / pausa:') || '';
+    await HTP.pausarGira(id, motivo);
+    HTP.toast('Buque pausado (gira)', 'ok');
+  },
+  async reanudar(id) { await HTP.reanudarDeGira(id); HTP.toast('Buque reanudado', 'ok'); },
+  async cerrarBuque(id) {
+    if (!HTP.confirmar('¿Cerrar este buque? Pasará al histórico.')) return;
+    await HTP.cerrarBuque(id);
+    HTP.toast('Buque cerrado', 'ok');
+  },
+  async eliminarBuque(id) {
+    if (!HTP.confirmar('Esta acción elimina el buque y no se puede deshacer. ¿Continuar?')) return;
+    await HTP.eliminarBuque(id);
+    HTP.toast('Buque eliminado', 'ok');
+  },
+
+  /* ---------- TURNOS PENDIENTES ---------- */
+  renderTurnosPendientes() {
+    const cont = document.getElementById('listaTurnosPendientes');
+    if (!TURNOS_PEND.length) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">✅</div><div class="t">Sin cierres pendientes</div><div class="s">Los cierres de turno de Tarja aparecerán aquí.</div></div>`;
+      return;
+    }
+    cont.innerHTML = TURNOS_PEND.map(t => {
+      const b = BUQUES.find(x => x.id === t.buqueId);
+      return `
+      <div class="row-item">
+        <div class="main">
+          <div class="t">${b ? b.nombre : '—'} · Turno ${t.turno} · ${t.fecha}</div>
+          <div class="s">${HTP.fmtTon(t.totalToneladas)} MT · ${t.viajes} viajes · Tarja: ${t.tarjaNombre || '—'}</div>
+        </div>
+        <div class="side" style="display:flex; gap:6px;">
+          <button class="btn btn-ok btn-xs" onclick="Sup.aprobar('${t.id}')">Aprobar</button>
+          <button class="btn btn-bad btn-xs" onclick="Sup.rechazar('${t.id}')">Rechazar</button>
+        </div>
+      </div>`;
+    }).join('');
+  },
+  async aprobar(turnoId) { await HTP.aprobarTurno(turnoId, usuario.nombre); HTP.toast('Cierre aprobado', 'ok'); },
+  async rechazar(turnoId) {
+    const motivo = prompt('Motivo del rechazo (vuelve a Tarja abierto):') || '';
+    await HTP.rechazarTurno(turnoId, usuario.nombre, motivo);
+    HTP.toast('Cierre rechazado, turno reabierto', 'bad');
+  },
+
+  /* ---------- DETENCIONES ---------- */
+  poblaSelectBuqueDetencion() {
+    const sel = document.getElementById('selBuqueDetencion');
+    const prev = sel.value;
+    const activos = BUQUES.filter(b => b.estado !== 'cerrado');
+    sel.innerHTML = activos.map(b => `<option value="${b.id}">${b.nombre} ${b.voyage || ''}</option>`).join('') || '<option value="">Sin buques</option>';
+    if (prev && activos.some(b => b.id === prev)) sel.value = prev;
+    Sup.cambiarBuqueDetencion();
+  },
+  cambiarBuqueDetencion() {
+    if (detUnsub) detUnsub();
+    const id = document.getElementById('selBuqueDetencion').value;
+    if (!id) { DETENCIONES = []; Sup.renderDetenciones(); return; }
+    detUnsub = HTP.listenDetenciones(id, ds => { DETENCIONES = ds; Sup.renderDetenciones(); });
+  },
+  renderDetenciones() {
+    const cont = document.getElementById('listaDetenciones');
+    if (!DETENCIONES.length) { cont.innerHTML = '<p class="muted center" style="padding:20px 0;">Sin detenciones registradas</p>'; return; }
+    cont.innerHTML = DETENCIONES.map(d => `
+      <div class="row-item">
+        <div class="main">
+          <div class="t">${d.motivo}</div>
+          <div class="s">${HTP.fmtFechaHora(d.horaInicio)} → ${d.horaTermino ? HTP.fmtFechaHora(d.horaTermino) : 'en curso'} ${d.observacion ? '· ' + d.observacion : ''}</div>
+        </div>
+        <div class="side" style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+          <span class="badge ${d.afectaRate ? 'badge-bad' : 'badge-muted'}">${d.afectaRate ? 'Afecta rate' : 'No afecta'}</span>
+          ${!d.horaTermino ? `<button class="btn btn-ghost btn-xs" onclick="Sup.cerrarDetencion('${d.id}')">Cerrar ahora</button>` : ''}
+        </div>
+      </div>`).join('');
+  },
+  abrirModalDetencion() {
+    const buqueId = document.getElementById('selBuqueDetencion').value;
+    if (!buqueId) { HTP.toast('Selecciona un buque primero', 'bad'); return; }
+    HTP.openModal(`
+      <div class="modal-head"><h3>Nueva detención</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <div class="field"><label>Motivo</label><input id="dtMotivo" placeholder="Ej: Falla de correa transportadora"></div>
+      <div class="field"><label>Observación (opcional)</label><input id="dtObs" placeholder=""></div>
+      <div class="field"><label>¿Afecta el rate?</label>
+        <div class="seg"><button type="button" class="active" onclick="Sup.setAfecta(true,this)">Sí</button><button type="button" onclick="Sup.setAfecta(false,this)">No</button></div>
+      </div>
+      <input type="hidden" id="dtAfecta" value="true">
+      <button class="btn btn-accent btn-block" onclick="Sup.crearDetencion('${buqueId}')">Iniciar detención (ahora)</button>
+    `);
+  },
+  setAfecta(v, el) {
+    document.getElementById('dtAfecta').value = v;
+    el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  },
+  async crearDetencion(buqueId) {
+    const motivo = document.getElementById('dtMotivo').value.trim();
+    if (!motivo) { HTP.toast('Ingresa un motivo', 'bad'); return; }
+    await HTP.crearDetencion({
+      buqueId, motivo,
+      observacion: document.getElementById('dtObs').value.trim(),
+      afectaRate: document.getElementById('dtAfecta').value === 'true',
+      creadoPor: usuario.nombre
+    });
+    HTP.closeModal();
+    HTP.toast('Detención registrada', 'ok');
+  },
+  async cerrarDetencion(id) { await HTP.cerrarDetencion(id); HTP.toast('Detención cerrada', 'ok'); },
+
+  /* ---------- FLOTA CAMIONES ---------- */
+  async guardarCamion() {
+    const p = document.getElementById('camPatente').value.trim();
+    const tv = document.getElementById('camTaraVacia').value;
+    const tl = document.getElementById('camTaraLlena').value;
+    if (!p || !tv || !tl) { HTP.toast('Completa patente y taras', 'bad'); return; }
+    if (Number(tl) <= Number(tv)) { HTP.toast('La tara llena debe ser mayor a la vacía', 'bad'); return; }
+    await HTP.guardarCamion(p, tv, tl);
+    document.getElementById('camPatente').value = '';
+    document.getElementById('camTaraVacia').value = '';
+    document.getElementById('camTaraLlena').value = '';
+    HTP.toast('Camión guardado', 'ok');
+  },
+  renderCamiones() {
+    const cont = document.getElementById('listaCamiones');
+    if (!CAMIONES.length) { cont.innerHTML = '<p class="muted center" style="padding:20px 0;">Sin camiones registrados</p>'; return; }
+    cont.innerHTML = `<table class="data"><thead><tr><th>Patente</th><th>Tara vacía</th><th>Tara llena</th><th>Neto</th><th></th></tr></thead><tbody>` +
+      CAMIONES.map(c => `<tr>
+        <td class="mono">${c.patente}</td><td class="mono">${HTP.fmtTon(c.taraVacia)}</td><td class="mono">${HTP.fmtTon(c.taraLlena)}</td>
+        <td class="mono" style="color:var(--ink-bright)">${HTP.fmtTon(c.pesoNeto)}</td>
+        <td><button class="btn btn-ghost btn-xs" onclick="Sup.eliminarCamion('${c.patente}')">🗑</button></td>
+      </tr>`).join('') + `</tbody></table>`;
+  },
+  async eliminarCamion(p) {
+    if (!HTP.confirmar('¿Eliminar camión ' + p + '?')) return;
+    await HTP.eliminarCamion(p);
+    HTP.toast('Camión eliminado', 'ok');
+  },
+
+  /* ---------- CREAR / CARGAR BUQUE ---------- */
+  renderNvBodegas() {
+    const cont = document.getElementById('nvBodegas');
+    const esHist = document.getElementById('nvEsHistorico').checked;
+    cont.innerHTML = HTP.BODEGAS_BASE.map((n, i) => {
+      const id = 'b' + (i + 1);
+      return `
+      <div class="bodega-card">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="nvBodActiva_${id}" style="width:auto;" checked> ${n}
+        </label>
+        <div class="field-row" style="margin-top:8px;">
+          <div class="field" style="margin-bottom:0;"><label>Tipo</label>
+            <select id="nvBodTipo_${id}"><option value="descarga">Descarga</option><option value="carga">Carga</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;"><label>Ton. objetivo</label><input id="nvBodObj_${id}" class="mono" type="number" inputmode="decimal"></div>
+        </div>
+        ${esHist ? `<div class="field" style="margin-top:8px; margin-bottom:0;"><label>Ton. real movida</label><input id="nvBodAcum_${id}" class="mono" type="number" inputmode="decimal" value="0"></div>` : ''}
+      </div>`;
+    }).join('');
+  },
+  toggleHistorico() {
+    const esHist = document.getElementById('nvEsHistorico').checked;
+    document.getElementById('nvCierreCard').classList.toggle('hidden', !esHist);
+    document.getElementById('nvTurnosCard').classList.toggle('hidden', !esHist);
+    if (esHist && !nvTurnosHist.length) { Sup.agregarFilaTurnoHist(); }
+    Sup.renderNvBodegas();
+  },
+  toggleMaterial() {
+    const esAcero = document.getElementById('nvMaterial').value === 'acero';
+    document.getElementById('nvAceroCard').classList.toggle('hidden', !esAcero);
+  },
+  async crearBuque() {
+    const nombre = document.getElementById('nvNombre').value.trim().toUpperCase();
+    if (!nombre) { HTP.toast('Ingresa el nombre del buque', 'bad'); return; }
+    const esHist = document.getElementById('nvEsHistorico').checked;
+    const tipoOp = document.getElementById('nvFaena').value;
+    const bodegas = {};
+    HTP.BODEGAS_BASE.forEach((n, i) => {
+      const id = 'b' + (i + 1);
+      const activa = document.getElementById('nvBodActiva_' + id).checked;
+      bodegas[id] = {
+        id, nombre: n, activa,
+        tipo: document.getElementById('nvBodTipo_' + id).value,
+        tonObjetivo: Number(document.getElementById('nvBodObj_' + id).value) || 0,
+        tonAcumulado: esHist ? (Number(document.getElementById('nvBodAcum_' + id).value) || 0) : 0,
+        pctRestante: null
+      };
+    });
+    const inicioRealVal = document.getElementById('nvInicioReal').value;
+    const esAcero = document.getElementById('nvMaterial').value === 'acero';
+    const atraqueFecha = document.getElementById('nvAtraqueFecha').value;
+    const desatraqueFecha = document.getElementById('nvDesatraqueFecha').value;
+    const data = {
+      nombre, voyage: document.getElementById('nvVoyage').value.trim(),
+      tipoOperacion: tipoOp, tipoGranel: document.getElementById('nvMaterial').value,
+      rateMeta: Number(document.getElementById('nvRateMeta').value) || 0,
+      fechaInicioProgramado: document.getElementById('nvInicioProg').value ? new Date(document.getElementById('nvInicioProg').value).toISOString() : null,
+      fechaInicioReal: inicioRealVal ? new Date(inicioRealVal).toISOString() : (esHist ? new Date().toISOString() : null),
+      atraque: { fecha: atraqueFecha ? new Date(atraqueFecha).toISOString() : null, practico: document.getElementById('nvAtraquePractico').value.trim() },
+      desatraque: { fecha: desatraqueFecha ? new Date(desatraqueFecha).toISOString() : null, practico: document.getElementById('nvDesatraquePractico').value.trim() },
+      bodegas, esHistorico: esHist, creadoPor: usuario.nombre
+    };
+    const id = await HTP.crearBuque(data);
+    if (esAcero) {
+      await HTP.actualizarBuque(id, {
+        aceroAcumulado: 0,
+        acero: {
+          rolloPeso: Number(document.getElementById('nvRolloPeso').value) || 12.5,
+          barraPeso: Number(document.getElementById('nvBarraPeso').value) || 0.045,
+          barraLargaPeso: Number(document.getElementById('nvBarraLargaPeso').value) || 0.085
+        }
+      });
+    }
+    if (esHist) {
+      const fc = document.getElementById('nvFechaCierre').value;
+      await HTP.actualizarBuque(id, { estado: 'cerrado', fechaCierre: fc ? new Date(fc).toISOString() : new Date().toISOString() });
+      for (const fila of nvTurnosHist) {
+        if (!fila.toneladas && !fila.horas) continue;
+        await HTP.crearTurnoHistorico({
+          buqueId: id, fecha: fila.fecha, turno: fila.turno,
+          horasEfectivas: fila.horas, toneladas: fila.toneladas,
+          bodegaId: fila.bodegaId || null, observacion: fila.obs || '',
+          creadoPor: usuario.nombre
+        });
+      }
+      nvTurnosHist = [];
+    }
+    HTP.toast('Buque guardado', 'ok');
+    document.querySelector('.tab-btn[data-tab="activos"]').click();
+  },
+
+  /* ---------- TURNOS HISTÓRICOS (formulario de carga) ---------- */
+  agregarFilaTurnoHist() {
+    nvTurnosHist.push({ fecha: HTP.hoyISO(), turno: 1, horas: '', toneladas: '', bodegaId: 'b1', obs: '' });
+    Sup.renderNvTurnos();
+  },
+  quitarFilaTurnoHist(idx) {
+    nvTurnosHist.splice(idx, 1);
+    Sup.renderNvTurnos();
+  },
+  actualizarFilaTurnoHist(idx, campo, valor) {
+    nvTurnosHist[idx][campo] = valor;
+  },
+  renderNvTurnos() {
+    const cont = document.getElementById('nvTurnosLista');
+    cont.innerHTML = nvTurnosHist.map((f, idx) => `
+      <div class="card" style="background:var(--bg-panel-2); padding:12px;">
+        <div class="field-row">
+          <div class="field" style="margin-bottom:8px;"><label>Fecha</label><input type="date" value="${f.fecha}" onchange="Sup.actualizarFilaTurnoHist(${idx},'fecha',this.value)"></div>
+          <div class="field" style="margin-bottom:8px;"><label>Turno</label>
+            <select onchange="Sup.actualizarFilaTurnoHist(${idx},'turno',Number(this.value))">
+              <option value="1" ${f.turno==1?'selected':''}>1° (00-08)</option>
+              <option value="2" ${f.turno==2?'selected':''}>2° (08-16)</option>
+              <option value="3" ${f.turno==3?'selected':''}>3° (16-00)</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field" style="margin-bottom:8px;"><label>Horas efectivas</label><input class="mono" type="number" step="0.1" value="${f.horas}" onchange="Sup.actualizarFilaTurnoHist(${idx},'horas',this.value)"></div>
+          <div class="field" style="margin-bottom:8px;"><label>Toneladas</label><input class="mono" type="number" step="0.001" value="${f.toneladas}" onchange="Sup.actualizarFilaTurnoHist(${idx},'toneladas',this.value)"></div>
+        </div>
+        <div class="field-row">
+          <div class="field" style="margin-bottom:8px;"><label>Bodega</label>
+            <select onchange="Sup.actualizarFilaTurnoHist(${idx},'bodegaId',this.value)">
+              ${HTP.BODEGAS_BASE.map((n,i)=>`<option value="b${i+1}" ${f.bodegaId==='b'+(i+1)?'selected':''}>${n}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:8px;"><label>Observación</label><input value="${f.obs}" placeholder="Ej: atraso movimiento pontones" onchange="Sup.actualizarFilaTurnoHist(${idx},'obs',this.value)"></div>
+        </div>
+        <button class="btn btn-bad btn-xs" onclick="Sup.quitarFilaTurnoHist(${idx})">Quitar fila</button>
+      </div>`).join('');
+  },
+
+  /* ---------- HISTÓRICO ---------- */
+  renderHistorico() {
+    const cerrados = BUQUES.filter(b => b.estado === 'cerrado');
+    const fn = (document.getElementById('hFiltroNombre').value || '').toUpperCase();
+    const fm = document.getElementById('hFiltroMaterial').value;
+    const ff = document.getElementById('hFiltroFaena').value;
+    const filtrados = cerrados.filter(b =>
+      (!fn || b.nombre.includes(fn)) && (!fm || b.tipoGranel === fm) && (!ff || b.tipoOperacion === ff)
+    );
+    const cont = document.getElementById('listaHistorico');
+    if (!filtrados.length) { cont.innerHTML = '<p class="muted center" style="padding:20px 0;">Sin resultados</p>'; return; }
+    cont.innerHTML = filtrados.map(b => {
+      const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      return `<div class="row-item">
+        <div class="main"><div class="t">${b.nombre} ${b.voyage || ''}</div>
+          <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(r.ton)} MT · rendimiento ${HTP.fmtRate(r.rate)}</div></div>
+        <div class="side" style="display:flex; gap:6px;">
+          <button class="btn btn-ghost btn-xs" onclick="Sup.exportarCSV('${b.id}')">⬇ CSV</button>
+          <button class="btn btn-ghost btn-xs" onclick="Sup.reabrirDesdeHistorico('${b.id}')">↺ Reabrir</button>
+        </div>
+      </div>`;
+    }).join('');
+  },
+  async reabrirDesdeHistorico(id) {
+    if (!HTP.confirmar('¿Reabrir este buque como activo?')) return;
+    await HTP.reabrirBuque(id);
+    HTP.toast('Buque reabierto', 'ok');
+    document.querySelector('.tab-btn[data-tab="activos"]').click();
+  },
+  exportarCSV(buqueId) {
+    const b = BUQUES.find(x => x.id === buqueId);
+    const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id).sort((a,x) => (a.fecha+a.turno).localeCompare(x.fecha+x.turno));
+    const at = b.atraque || {}, de = b.desatraque || {};
+    let csv = `Buque,${b.nombre} ${b.voyage || ''}\n`;
+    csv += `Material,${b.tipoGranel}\nFaena,${b.tipoOperacion}\n`;
+    csv += `Atraque,${at.fecha ? HTP.fmtFechaHora(at.fecha) : ''},Practico,${at.practico || ''}\n`;
+    csv += `Desatraque,${de.fecha ? HTP.fmtFechaHora(de.fecha) : ''},Practico,${de.practico || ''}\n\n`;
+    csv += 'Bodega,Tipo,Ton Objetivo,Ton Acumulado,% Avance\n';
+    Object.values(b.bodegas).forEach(bod => {
+      csv += `${bod.nombre},${bod.tipo},${bod.tonObjetivo},${bod.tonAcumulado},${HTP.avanceBodega(bod).toFixed(1)}\n`;
+    });
+    csv += '\nTurno,Dia,Horas Efectivas,Toneladas,Observacion\n';
+    turnosBuque.forEach(t => {
+      csv += `${t.turno},${t.fecha},${t.horasEfectivas ?? ''},${t.totalToneladas},${(t.observacionCierre || '').replace(/,/g,';')}\n`;
+    });
+    const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+    csv += `\nTotal MT,${r.ton}\nTotal Horas Efectivas,${r.horas.toFixed(2)}\nRendimiento (MT/h),${r.rate.toFixed(1)}\nProductividad %,${r.productividad.toFixed(1)}\n`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `HTP_${b.nombre}_${b.voyage || ''}.csv`.replace(/\s+/g, '_');
+    a.click();
+  }
+};
+
+Sup.renderNvBodegas();
+Sup.toggleMaterial();
+</script>
+</body>
+</html>
