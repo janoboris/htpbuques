@@ -118,7 +118,7 @@
       </div>
       <div class="card">
         <div class="card-title">Hora de despacho</div>
-        <input id="mtHora" type="time">
+        <input id="mtHora" type="text">
       </div>
       <button class="btn btn-accent btn-block" onclick="Sup.mtRegistrar()">✅ Agregar registro</button>
 
@@ -249,6 +249,7 @@
 <script src="htp-core.js"></script>
 <script>
 HTP.init();
+HTP.wireHorasRapidas(['mtHora']);
 const usuario = HTP.getUsuario();
 if (!usuario || usuario.perfil !== 'supervisor') location.href = 'index.html';
 document.getElementById('nombreUsuario').textContent = usuario ? usuario.nombre : '';
@@ -623,32 +624,45 @@ const Sup = {
       </div>`).join('') : '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>';
     Sup.mtRenderBodegaPick();
   },
+  mtNecesitaTara() {
+    const b = BUQUES.find(x => x.id === mtBuqueId);
+    if (!b || b.tipoGranel !== 'granel') return false;
+    const bod = mtBodegaSel && b.bodegas[mtBodegaSel];
+    return !!(bod && bod.tipo === 'descarga');
+  },
   mtRenderCamionPick() {
     const cont = document.getElementById('mtCamionPick');
     if (!cont) return;
+    const nt = Sup.mtNecesitaTara();
     cont.innerHTML = `
       <select onchange="Sup.mtElegirCamion(this.value)">
         <option value="">— Seleccionar patente —</option>
-        ${CAMIONES.map(c => `<option value="${c.patente}" ${mtCamionSel === c.patente ? 'selected' : ''}>${c.patente} (neto ${HTP.fmtTon(c.pesoNeto)} kg)</option>`).join('')}
+        ${CAMIONES.map(c => `<option value="${c.patente}" ${mtCamionSel === c.patente ? 'selected' : ''}>${c.patente}${c.pesoNeto ? ' (neto ' + HTP.fmtTon(c.pesoNeto) + ' kg)' : ''}</option>`).join('')}
       </select>
-      <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px;" onclick="Sup.mtAbrirNuevoCamion()">+ Agregar camión nuevo</button>`;
+      <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px;" onclick="Sup.mtAbrirNuevoCamion(${nt})">+ Agregar camión nuevo</button>`;
   },
   mtElegirCamion(p) { mtCamionSel = p || null; },
-  mtAbrirNuevoCamion() {
+  mtAbrirNuevoCamion(necesitaTara) {
     HTP.openModal(`
       <div class="modal-head"><h3>Nuevo camión</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
-      <div class="field"><label>Patente</label><input id="mtNcPatente" class="mono" placeholder="AB1234" style="text-transform:uppercase;"></div>
+      <div class="field"><label>Patente</label><input id="mtNcPatente" class="mono" placeholder="AB1234" style="text-transform:uppercase;" autofocus></div>
+      ${necesitaTara ? `
       <div class="field-row">
         <div class="field"><label>Tara vacía (kg)</label><input id="mtNcTaraVacia" class="mono" type="number"></div>
         <div class="field"><label>Tara llena (kg)</label><input id="mtNcTaraLlena" class="mono" type="number"></div>
-      </div>
-      <button class="btn btn-accent btn-block" onclick="Sup.mtGuardarNuevoCamion()">Guardar camión</button>
+      </div>` : `<p class="muted" style="font-size:12.5px; margin-bottom:14px;">No necesita tara para este registro — el tonelaje se calcula por bultos.</p>`}
+      <button class="btn btn-accent btn-block" onclick="Sup.mtGuardarNuevoCamion(${!!necesitaTara})">Guardar camión</button>
     `);
   },
-  async mtGuardarNuevoCamion() {
+  async mtGuardarNuevoCamion(necesitaTara) {
     const p = document.getElementById('mtNcPatente').value.trim();
-    const tv = document.getElementById('mtNcTaraVacia').value, tl = document.getElementById('mtNcTaraLlena').value;
-    if (!p || !tv || !tl) { HTP.toast('Completa todos los campos', 'bad'); return; }
+    if (!p) { HTP.toast('Ingresa la patente', 'bad'); return; }
+    let tv = 0, tl = 0;
+    if (necesitaTara) {
+      tv = document.getElementById('mtNcTaraVacia').value;
+      tl = document.getElementById('mtNcTaraLlena').value;
+      if (!tv || !tl) { HTP.toast('Completa las taras', 'bad'); return; }
+    }
     const c = await HTP.guardarCamion(p, tv, tl);
     mtCamionSel = c.patente;
     HTP.closeModal();
@@ -671,7 +685,7 @@ const Sup = {
         <div class="s">${bod.tipo === 'descarga' ? 'Descarga' : 'Carga'} · ${HTP.fmtTon(bod.tonAcumulado)}/${HTP.fmtTon(bod.tonObjetivo)} MT</div>
       </button>`).join('') || '<p class="muted">Sin bodegas activas</p>';
     const bodSel = mtBodegaSel && b.bodegas[mtBodegaSel];
-    document.getElementById('mtPctCard').classList.toggle('hidden', !(bodSel && bodSel.tipo === 'descarga'));
+    document.getElementById('mtPctCard').classList.toggle('hidden', esAcero || !(bodSel && bodSel.tipo === 'descarga'));
   },
   mtElegirBodega(id) { mtBodegaSel = id; Sup.mtRenderBodegaPick(); },
   mtSetTipoAcero(tipo, el) {
@@ -720,9 +734,9 @@ const Sup = {
     }
     await HTP.agregarRegistro(mtTurnoId, { camion: mtCamionSel, bodegaId: mtBodegaSel, toneladas: ton, pctRestante: pct, ts, ...extra });
     await HTP.ajustarBodega(mtBuqueId, mtBodegaSel, ton, pct);
-    document.getElementById('mtTonInput').value = '';
-    document.getElementById('mtBultos').value = '';
     document.getElementById('mtHora').value = '';
+    mtCamionSel = null;
+    Sup.mtRenderCamionPick();
     Sup.mtCalcularAcero();
     HTP.toast('Registro agregado', 'ok');
   },

@@ -242,4 +242,15 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 @keyframes spin { to { transform: rotate(360deg); } }
 .hidden { display: none !important; }
 
+/* ---------- Selector de bodega (Tarja y Tarja manual) ---------- */
+.bodega-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bodega-pick button { background: var(--bg-panel-2); border: 1.5px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; color: var(--ink); text-align: left; cursor: pointer; }
+.bodega-pick button.sel { border-color: var(--forge); background: rgba(232,112,62,0.14); box-shadow: 0 0 0 1px var(--forge) inset; }
+.bodega-pick button.sel .n::after { content: ' ✓'; color: var(--forge-light); }
+.bodega-pick button .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
+.bodega-pick button .s { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+
+/* ---------- Hora rápida (digitación HH:MM) ---------- */
+.hora-rapida { font-family: var(--font-mono); font-size: 20px; text-align: center; letter-spacing: 0.08em; }
+
 ::selection { background: var(--forge); color: white; }

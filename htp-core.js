@@ -453,6 +453,25 @@ const HTP = (() => {
     return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
   }
   function hoyISO() { return new Date().toISOString().slice(0, 10); }
+
+  // Convierte un <input> de hora en digitación rápida: el tarja solo teclea
+  // números (ej "0859") y se autoformatea a "08:59", sin selector nativo.
+  function wireHoraRapida(id) {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.horaRapidaListo) return;
+    el.dataset.horaRapidaListo = '1';
+    el.type = 'text';
+    el.classList.add('mono', 'hora-rapida');
+    el.setAttribute('inputmode', 'numeric');
+    el.setAttribute('maxlength', '5');
+    el.setAttribute('placeholder', 'HH:MM');
+    el.addEventListener('input', () => {
+      let v = el.value.replace(/[^\d]/g, '').slice(0, 4);
+      if (v.length >= 3) v = v.slice(0, 2) + ':' + v.slice(2);
+      el.value = v;
+    });
+  }
+  function wireHorasRapidas(ids) { (ids || []).forEach(wireHoraRapida); }
   function turnoActualNum() {
     const h = new Date().getHours();
     if (h >= 0 && h < 8) return 1;
@@ -511,7 +530,7 @@ const HTP = (() => {
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
     totalToneladas, sumarAcero, avanceBodega, estadoBodega, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, camionesPorHora,
-    fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, hoyISO, turnoActualNum,
+    fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, hoyISO, turnoActualNum, wireHorasRapidas,
     toast, openModal, closeModal, confirmar
   };
 })();

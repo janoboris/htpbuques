@@ -18,11 +18,7 @@
   .turno-banner.off .t { color: var(--warn); }
   .turno-banner.on .t { color: var(--ok); }
 
-  .bodega-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .bodega-pick button { background: var(--bg-panel-2); border: 1.5px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; color: var(--ink); text-align: left; cursor: pointer; }
-  .bodega-pick button.sel { border-color: var(--forge); background: rgba(232,112,62,0.1); }
-  .bodega-pick button .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
-  .bodega-pick button .s { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+  /* .bodega-pick ahora vive en htp-style.css (compartido con Tarja manual) */
 
   .total-preview { text-align: center; padding: 16px; background: var(--bg-panel-2); border-radius: var(--radius-sm); margin: 12px 0; }
   .total-preview .v { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--forge-light); }
@@ -100,7 +96,7 @@
           </div>
           <div class="card">
             <div class="card-title">Hora de despacho</div>
-            <input id="horaGranelInput" type="time">
+            <input id="horaGranelInput" type="text">
           </div>
           <button class="btn btn-accent btn-block" onclick="Tarja.registrarGranel()">✅ Registrar viaje</button>
         </div>
@@ -124,7 +120,7 @@
             </div>
             <div class="card">
               <div class="card-title">Hora de despacho</div>
-              <input id="horaCanchaInput" type="time">
+              <input id="horaCanchaInput" type="text">
             </div>
             <button class="btn btn-ghost btn-block" onclick="Tarja.registrarCancha()">📥 Registrar camión a cancha</button>
           </div>
@@ -144,7 +140,7 @@
             </div>
             <div class="card">
               <div class="card-title">Hora</div>
-              <input id="horaGruaInput" type="time">
+              <input id="horaGruaInput" type="text">
             </div>
             <button class="btn btn-accent btn-block" onclick="Tarja.registrarGrua()">✅ Registrar carga a bodega</button>
           </div>
@@ -183,7 +179,7 @@
         </div>
         <div class="card">
           <div class="card-title">Hora de despacho</div>
-          <input id="horaAceroInput" type="time">
+          <input id="horaAceroInput" type="text">
         </div>
         <button class="btn btn-accent btn-block" onclick="Tarja.registrarAcero()">✅ Registrar carga</button>
       </div>
@@ -214,6 +210,7 @@
 <script src="htp-core.js"></script>
 <script>
 HTP.init();
+HTP.wireHorasRapidas(['horaGranelInput', 'horaCanchaInput', 'horaGruaInput', 'horaAceroInput']);
 const usuario = HTP.getUsuario();
 if (!usuario || usuario.perfil !== 'tarja') location.href = 'index.html';
 document.getElementById('nombreUsuario').textContent = usuario ? usuario.nombre : '';
@@ -346,35 +343,43 @@ const Tarja = {
   },
 
   renderCamionPicks() {
-    ['camionPickGranel', 'camionPickAcero', 'camionPickCancha'].forEach(idc => {
+    const necesitaTara = { camionPickGranel: true, camionPickAcero: false, camionPickCancha: false };
+    Object.keys(necesitaTara).forEach(idc => {
       const cont = document.getElementById(idc);
       if (!cont) return;
+      const nt = necesitaTara[idc];
       cont.innerHTML = `
         <select onchange="Tarja.elegirCamion(this.value)">
           <option value="">— Seleccionar patente —</option>
-          ${CAMIONES.map(c => `<option value="${c.patente}" ${camionSeleccionado === c.patente ? 'selected' : ''}>${c.patente} (neto ${HTP.fmtTon(c.pesoNeto)} kg)</option>`).join('')}
+          ${CAMIONES.map(c => `<option value="${c.patente}" ${camionSeleccionado === c.patente ? 'selected' : ''}>${c.patente}${c.pesoNeto ? ' (neto ' + HTP.fmtTon(c.pesoNeto) + ' kg)' : ''}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px;" onclick="Tarja.abrirModalNuevoCamion()">+ Agregar camión nuevo</button>`;
+        <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px;" onclick="Tarja.abrirModalNuevoCamion(${nt})">+ Agregar camión nuevo</button>`;
     });
   },
   elegirCamion(p) { camionSeleccionado = p || null; },
 
-  abrirModalNuevoCamion() {
+  abrirModalNuevoCamion(necesitaTara) {
     HTP.openModal(`
       <div class="modal-head"><h3>Nuevo camión</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
-      <div class="field"><label>Patente</label><input id="mcPatente" class="mono" placeholder="AB1234" style="text-transform:uppercase;"></div>
+      <div class="field"><label>Patente</label><input id="mcPatente" class="mono" placeholder="AB1234" style="text-transform:uppercase;" autofocus></div>
+      ${necesitaTara ? `
       <div class="field-row">
         <div class="field"><label>Tara vacía (kg)</label><input id="mcTaraVacia" class="mono" type="number" inputmode="decimal"></div>
         <div class="field"><label>Tara llena (kg)</label><input id="mcTaraLlena" class="mono" type="number" inputmode="decimal"></div>
-      </div>
-      <button class="btn btn-accent btn-block" onclick="Tarja.guardarNuevoCamion()">Guardar camión</button>
+      </div>` : `<p class="muted" style="font-size:12.5px; margin-bottom:14px;">No necesita tara para este registro — el tonelaje se calcula por bultos.</p>`}
+      <button class="btn btn-accent btn-block" onclick="Tarja.guardarNuevoCamion(${!!necesitaTara})">Guardar camión</button>
     `);
   },
-  async guardarNuevoCamion() {
+  async guardarNuevoCamion(necesitaTara) {
     const p = document.getElementById('mcPatente').value.trim();
-    const tv = document.getElementById('mcTaraVacia').value, tl = document.getElementById('mcTaraLlena').value;
-    if (!p || !tv || !tl) { HTP.toast('Completa todos los campos', 'bad'); return; }
-    if (Number(tl) <= Number(tv)) { HTP.toast('La tara llena debe ser mayor a la vacía', 'bad'); return; }
+    if (!p) { HTP.toast('Ingresa la patente', 'bad'); return; }
+    let tv = 0, tl = 0;
+    if (necesitaTara) {
+      tv = document.getElementById('mcTaraVacia').value;
+      tl = document.getElementById('mcTaraLlena').value;
+      if (!tv || !tl) { HTP.toast('Completa las taras', 'bad'); return; }
+      if (Number(tl) <= Number(tv)) { HTP.toast('La tara llena debe ser mayor a la vacía', 'bad'); return; }
+    }
     const c = await HTP.guardarCamion(p, tv, tl);
     camionSeleccionado = c.patente;
     HTP.closeModal();
