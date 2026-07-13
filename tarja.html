@@ -80,30 +80,80 @@
       <!-- GRANEL -->
       <div id="formGranel" class="hidden">
         <div class="card">
-          <div class="card-title">Camión</div>
-          <div id="camionPickGranel"></div>
-        </div>
-        <div class="card">
           <div class="card-title">Bodega</div>
           <div class="bodega-pick" id="bodegaPickGranel"></div>
         </div>
-        <div class="card" id="pctRestanteCard">
-          <div class="card-title">% material restante en bodega</div>
-          <input id="pctRestanteInput" class="mono" type="number" min="0" max="100" placeholder="Ej: 35">
+
+        <!-- DESCARGA: flujo simple camión → bodega -->
+        <div id="granelDescargaSub" class="hidden">
+          <div class="card">
+            <div class="card-title">Camión</div>
+            <div id="camionPickGranel"></div>
+          </div>
+          <div class="card" id="pctRestanteCard">
+            <div class="card-title">% material restante en bodega</div>
+            <input id="pctRestanteInput" class="mono" type="number" min="0" max="100" placeholder="Ej: 35">
+          </div>
+          <div class="card">
+            <div class="card-title">Toneladas del viaje</div>
+            <input id="tonGranelInput" class="mono" type="number" inputmode="decimal" placeholder="0.0" style="font-size:20px; text-align:center;">
+          </div>
+          <div class="card">
+            <div class="card-title">Hora de despacho</div>
+            <input id="horaGranelInput" type="time">
+          </div>
+          <button class="btn btn-accent btn-block" onclick="Tarja.registrarGranel()">✅ Registrar viaje</button>
         </div>
-        <div class="card">
-          <div class="card-title">Toneladas del viaje</div>
-          <input id="tonGranelInput" class="mono" type="number" inputmode="decimal" placeholder="0.0" style="font-size:20px; text-align:center;">
+
+        <!-- CARGA / EMBARQUE: dos etapas, camión a cancha y grúa a bodega -->
+        <div id="granelCargaSub" class="hidden">
+          <div class="seg">
+            <button type="button" class="active" onclick="Tarja.setModoCarga('cancha', this)">🚛 Camión → Cancha</button>
+            <button type="button" onclick="Tarja.setModoCarga('grua', this)">🏗 Grúa → Bodega</button>
+          </div>
+
+          <div id="cargaCanchaSub" style="margin-top:14px;">
+            <div class="card">
+              <div class="card-title">Camión</div>
+              <div id="camionPickCancha"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Toneladas descargadas a cancha</div>
+              <input id="tonCanchaInput" class="mono" type="number" inputmode="decimal" placeholder="0.0" style="font-size:20px; text-align:center;">
+              <p class="muted" style="font-size:11.5px; margin-top:6px;">Promedio configurado: <span id="promedioTonCamionTxt" class="mono">—</span> MT/camión (editable si este viaje fue distinto)</p>
+            </div>
+            <div class="card">
+              <div class="card-title">Hora de despacho</div>
+              <input id="horaCanchaInput" type="time">
+            </div>
+            <button class="btn btn-ghost btn-block" onclick="Tarja.registrarCancha()">📥 Registrar camión a cancha</button>
+          </div>
+
+          <div id="cargaGruaSub" class="hidden" style="margin-top:14px;">
+            <div class="card">
+              <div class="card-title">Toneladas cargadas a la bodega</div>
+              <input id="tonGruaInput" class="mono" type="number" inputmode="decimal" placeholder="0.0" style="font-size:20px; text-align:center;">
+            </div>
+            <div class="card">
+              <div class="card-title">Grúa (opcional)</div>
+              <div class="seg">
+                <button type="button" class="active" onclick="Tarja.setGrua('', this)">—</button>
+                <button type="button" onclick="Tarja.setGrua('nave', this)">Grúa nave</button>
+                <button type="button" onclick="Tarja.setGrua('tierra', this)">Grúa tierra</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Hora</div>
+              <input id="horaGruaInput" type="time">
+            </div>
+            <button class="btn btn-accent btn-block" onclick="Tarja.registrarGrua()">✅ Registrar carga a bodega</button>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <div class="card-title">Acopio en cancha (este turno)</div>
+            <p class="mono" id="resumenCancha" style="color:var(--ink-bright);">—</p>
+          </div>
         </div>
-        <div class="card">
-          <div class="card-title">Hora de despacho</div>
-          <input id="horaGranelInput" type="time">
-        </div>
-        <div class="card">
-          <div class="card-title">Gang / cuadrilla (opcional)</div>
-          <input id="gangGranelInput" placeholder="Ej: Gang N°1">
-        </div>
-        <button class="btn btn-accent btn-block" onclick="Tarja.registrarGranel()">✅ Registrar viaje</button>
       </div>
 
       <!-- ACERO -->
@@ -121,7 +171,6 @@
           <div class="seg">
             <button type="button" class="active" onclick="Tarja.setTipoAcero('rollos', this)">Rollos</button>
             <button type="button" onclick="Tarja.setTipoAcero('barras', this)">Barras</button>
-            <button type="button" onclick="Tarja.setTipoAcero('barraLarga', this)">Barra larga</button>
             <button type="button" onclick="Tarja.setTipoAcero('otro', this)">Otro</button>
           </div>
         </div>
@@ -135,10 +184,6 @@
         <div class="card">
           <div class="card-title">Hora de despacho</div>
           <input id="horaAceroInput" type="time">
-        </div>
-        <div class="card">
-          <div class="card-title">Gang / cuadrilla (opcional)</div>
-          <input id="gangAceroInput" placeholder="Ej: Gang N°1">
         </div>
         <button class="btn btn-accent btn-block" onclick="Tarja.registrarAcero()">✅ Registrar carga</button>
       </div>
@@ -180,6 +225,8 @@ HTP.onLiveChange(on => {
 
 let BUQUES = [], CAMIONES = [], buqueActual = null, turnoActual = null, turnoUnsub = null;
 let bodegaSeleccionada = null, camionSeleccionado = null, tipoAceroSel = 'rollos';
+let modoCarga = 'cancha', gruaSel = '';
+let turnosDelBuque = [], turnosDelBuqueUnsub = null;
 
 HTP.listenBuques(bs => {
   BUQUES = bs;
@@ -215,10 +262,13 @@ const Tarja = {
     Tarja.renderOperacion();
     Tarja.suscribirTurno();
     Tarja._turnoActualId = HTP.turnoDocId(buqueActual.id, HTP.hoyISO(), HTP.turnoActualNum());
+    if (turnosDelBuqueUnsub) turnosDelBuqueUnsub();
+    turnosDelBuqueUnsub = HTP.listenTurnosDeBuque(buqueActual.id, ts => { turnosDelBuque = ts; Tarja.renderOperacion(); });
   },
   cambiarBuque() {
     if (turnoUnsub) turnoUnsub();
-    buqueActual = null; turnoActual = null;
+    if (turnosDelBuqueUnsub) turnosDelBuqueUnsub();
+    buqueActual = null; turnoActual = null; turnosDelBuque = [];
     document.getElementById('vistaOperacion').classList.add('hidden');
     document.getElementById('vistaSeleccion').classList.remove('hidden');
   },
@@ -226,7 +276,12 @@ const Tarja = {
   renderOperacion() {
     if (!buqueActual) return;
     document.getElementById('opNombreBuque').textContent = `${buqueActual.nombre} ${buqueActual.voyage || ''}`;
-    document.getElementById('opDescBuque').textContent = `${buqueActual.tipoOperacion} · ${buqueActual.tipoGranel} · ${HTP.fmtTon(HTP.totalToneladas(buqueActual))} MT acumuladas`;
+    const r = HTP.calcularRendimientoPorTurnos(buqueActual, turnosDelBuque);
+    const proy = HTP.calcularProyeccion(buqueActual, r);
+    const badge = HTP.fmtProyeccionBadge(proy.diferenciaHoras);
+    const etcTxt = proy.etc ? `ETC ${HTP.fmtFechaHora(proy.etc)}` : '';
+    document.getElementById('opDescBuque').innerHTML = `${buqueActual.tipoOperacion} · ${buqueActual.tipoGranel} · ${HTP.fmtTon(HTP.totalToneladas(buqueActual))} MT acumuladas`
+      + (badge || etcTxt ? `<br>${badge} ${etcTxt ? '<span class="muted">· ' + etcTxt + '</span>' : ''}` : '');
     document.getElementById('giraAviso').classList.toggle('hidden', buqueActual.estado !== 'gira');
     document.getElementById('formGranel').classList.toggle('hidden', buqueActual.tipoGranel !== 'granel');
     document.getElementById('formAcero').classList.toggle('hidden', buqueActual.tipoGranel !== 'acero');
@@ -249,19 +304,49 @@ const Tarja = {
       const cont = document.getElementById(idc);
       if (cont) cont.innerHTML = html;
     });
-    Tarja.actualizarPctCard();
+    Tarja.actualizarSubformGranel();
   },
   elegirBodega(id) {
     bodegaSeleccionada = id;
     Tarja.renderBodegaPick();
   },
-  actualizarPctCard() {
-    const b = bodegaSeleccionada && buqueActual.bodegas[bodegaSeleccionada];
-    document.getElementById('pctRestanteCard').classList.toggle('hidden', !(b && b.tipo === 'descarga'));
+  actualizarSubformGranel() {
+    if (buqueActual.tipoGranel !== 'granel') return;
+    const bod = bodegaSeleccionada && buqueActual.bodegas[bodegaSeleccionada];
+    const esDescarga = bod && bod.tipo === 'descarga';
+    const esCarga = bod && bod.tipo === 'carga';
+    document.getElementById('granelDescargaSub').classList.toggle('hidden', !esDescarga);
+    document.getElementById('granelCargaSub').classList.toggle('hidden', !esCarga);
+    document.getElementById('pctRestanteCard').classList.toggle('hidden', !esDescarga);
+    if (esCarga) {
+      document.getElementById('promedioTonCamionTxt').textContent = HTP.fmtTon(buqueActual.promedioTonCamion || 30);
+      if (!document.getElementById('tonCanchaInput').value) document.getElementById('tonCanchaInput').value = buqueActual.promedioTonCamion || 30;
+      Tarja.renderResumenCancha();
+    }
+  },
+  renderResumenCancha() {
+    const el = document.getElementById('resumenCancha');
+    if (!el || !turnoActual) return;
+    const acopio = Number(turnoActual.toneladasCancha) || 0;
+    const cargado = Number(turnoActual.totalToneladas) || 0;
+    const disponible = Math.max(0, acopio - cargado);
+    el.textContent = `${HTP.fmtTon(acopio)} MT a cancha (${turnoActual.viajesCancha || 0} camiones) · ${HTP.fmtTon(cargado)} MT ya cargadas a bodega · ${HTP.fmtTon(disponible)} MT disponibles en cancha`;
+  },
+  setModoCarga(modo, el) {
+    modoCarga = modo;
+    el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('cargaCanchaSub').classList.toggle('hidden', modo !== 'cancha');
+    document.getElementById('cargaGruaSub').classList.toggle('hidden', modo !== 'grua');
+  },
+  setGrua(v, el) {
+    gruaSel = v;
+    el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
   },
 
   renderCamionPicks() {
-    ['camionPickGranel', 'camionPickAcero'].forEach(idc => {
+    ['camionPickGranel', 'camionPickAcero', 'camionPickCancha'].forEach(idc => {
       const cont = document.getElementById(idc);
       if (!cont) return;
       cont.innerHTML = `
@@ -342,7 +427,7 @@ const Tarja = {
   },
   setHoraAhora() {
     const hhmm = new Date().toTimeString().slice(0, 5);
-    ['horaGranelInput', 'horaAceroInput'].forEach(id => {
+    ['horaGranelInput', 'horaAceroInput', 'horaCanchaInput', 'horaGruaInput'].forEach(id => {
       const el = document.getElementById(id);
       if (el && !el.value) el.value = hhmm;
     });
@@ -352,6 +437,7 @@ const Tarja = {
     const regs = (turnoActual.registros || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
     document.getElementById('turnoTotalMini').textContent = `${HTP.fmtTon(turnoActual.totalToneladas)} MT · ${turnoActual.viajes} viajes`;
     Tarja.renderCamionesPorHora();
+    Tarja.renderResumenCancha();
     if (!regs.length) { cont.innerHTML = '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>'; return; }
     cont.innerHTML = regs.map(r => `
       <div class="row-item">
@@ -398,7 +484,7 @@ const Tarja = {
     }
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'granel', camion: camionSeleccionado, bodegaId: bodegaSeleccionada,
-      toneladas: ton, pctRestante: pct, gang: document.getElementById('gangGranelInput').value.trim(),
+      toneladas: ton, pctRestante: pct,
       ts: Tarja.horaInputAISO('horaGranelInput'),
       detalle: `${bod.nombre} (${bod.tipo})`
     });
@@ -410,13 +496,46 @@ const Tarja = {
     HTP.toast('Viaje registrado', 'ok');
   },
 
+  async registrarCancha() {
+    if (buqueActual.estado === 'gira') { HTP.toast('Buque en gira, no se puede registrar', 'bad'); return; }
+    if (!camionSeleccionado) { HTP.toast('Selecciona un camión', 'bad'); return; }
+    const ton = Number(document.getElementById('tonCanchaInput').value);
+    if (!ton || ton <= 0) { HTP.toast('Ingresa las toneladas del camión', 'bad'); return; }
+    await HTP.agregarRegistroCancha(turnoActual.id, {
+      camion: camionSeleccionado, toneladas: ton,
+      ts: Tarja.horaInputAISO('horaCanchaInput'),
+      detalle: `Cancha (acopio)`
+    });
+    document.getElementById('tonCanchaInput').value = buqueActual.promedioTonCamion || 30;
+    document.getElementById('horaCanchaInput').value = '';
+    Tarja.setHoraAhora();
+    HTP.toast('Camión a cancha registrado', 'ok');
+  },
+  async registrarGrua() {
+    if (buqueActual.estado === 'gira') { HTP.toast('Buque en gira, no se puede registrar', 'bad'); return; }
+    if (!bodegaSeleccionada) { HTP.toast('Selecciona una bodega', 'bad'); return; }
+    const ton = Number(document.getElementById('tonGruaInput').value);
+    if (!ton || ton <= 0) { HTP.toast('Ingresa las toneladas cargadas', 'bad'); return; }
+    const bod = buqueActual.bodegas[bodegaSeleccionada];
+    await HTP.agregarRegistro(turnoActual.id, {
+      tipo: 'grua_bodega', bodegaId: bodegaSeleccionada, toneladas: ton,
+      grua: gruaSel, ts: Tarja.horaInputAISO('horaGruaInput'),
+      detalle: `${bod.nombre} · grúa${gruaSel ? ' (' + gruaSel + ')' : ''}`
+    });
+    await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, ton, null);
+    document.getElementById('tonGruaInput').value = '';
+    document.getElementById('horaGruaInput').value = '';
+    Tarja.setHoraAhora();
+    HTP.toast('Carga a bodega registrada', 'ok');
+  },
+
   /* ---------- REGISTRO ACERO ---------- */
   setTipoAcero(tipo, el) {
     tipoAceroSel = tipo;
     el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
     el.classList.add('active');
-    const cfg = buqueActual.acero || { rolloPeso: 12.5, barraPeso: 0.045, barraLargaPeso: 0.085 };
-    const pesos = { rollos: cfg.rolloPeso, barras: cfg.barraPeso, barraLarga: cfg.barraLargaPeso, otro: '' };
+    const cfg = buqueActual.acero || { rolloPeso: 12.5, barraPeso: 0.045 };
+    const pesos = { rollos: cfg.rolloPeso, barras: cfg.barraPeso, otro: '' };
     document.getElementById('aceroPesoUnit').value = pesos[tipo];
     Tarja.calcularAcero();
   },
@@ -436,7 +555,7 @@ const Tarja = {
     const bod = buqueActual.bodegas[bodegaSeleccionada];
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'acero', camion: camionSeleccionado, aceroTipo: tipoAceroSel, bultos, pesoUnitario: peso,
-      bodegaId: bodegaSeleccionada, gang: document.getElementById('gangAceroInput').value.trim(),
+      bodegaId: bodegaSeleccionada,
       ts: Tarja.horaInputAISO('horaAceroInput'),
       toneladas: total, detalle: `${bod.nombre} · ${bultos} × ${tipoAceroSel}`
     });

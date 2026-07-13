@@ -39,6 +39,7 @@
 <div class="tabs">
   <button class="tab-btn active" data-tab="activos">Buques activos</button>
   <button class="tab-btn" data-tab="turnos">Cierres de turno</button>
+  <button class="tab-btn" data-tab="tarjamanual">Tarja manual</button>
   <button class="tab-btn" data-tab="detenciones">Detenciones</button>
   <button class="tab-btn" data-tab="camiones">Flota camiones</button>
   <button class="tab-btn" data-tab="crear">Crear / cargar buque</button>
@@ -57,6 +58,81 @@
     <div class="card">
       <div class="card-title">Cierres pendientes de aprobación</div>
       <div id="listaTurnosPendientes"></div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: TARJA MANUAL (turnos pasados) ============ -->
+  <div class="tab-pane" id="pane-tarjamanual">
+    <div class="card">
+      <div class="card-title">Elegir buque, fecha y turno</div>
+      <div class="field"><label>Buque</label><select id="mtBuque" onchange="Sup.mtCambiarBuque()"></select></div>
+      <div class="field-row">
+        <div class="field"><label>Fecha</label><input id="mtFecha" type="date"></div>
+        <div class="field"><label>Turno</label>
+          <select id="mtTurno">
+            <option value="1">1° (00-08)</option>
+            <option value="2">2° (08-16)</option>
+            <option value="3">3° (16-00)</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-accent btn-block" onclick="Sup.mtAbrirTurno()">Abrir / cargar este turno</button>
+    </div>
+
+    <div id="mtFormulario" class="hidden">
+      <div class="card">
+        <div class="card-title">Turno seleccionado</div>
+        <p class="mono" id="mtInfoTurno" style="color:var(--ink-bright);"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Camión</div>
+        <div id="mtCamionPick"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Bodega</div>
+        <div class="bodega-pick" id="mtBodegaPick"></div>
+      </div>
+      <div class="card hidden" id="mtPctCard">
+        <div class="card-title">% material restante en bodega</div>
+        <input id="mtPctInput" class="mono" type="number" min="0" max="100">
+      </div>
+      <div class="card hidden" id="mtAceroCard">
+        <div class="card-title">Tipo de acero</div>
+        <div class="seg">
+          <button type="button" class="active" onclick="Sup.mtSetTipoAcero('rollos', this)">Rollos</button>
+          <button type="button" onclick="Sup.mtSetTipoAcero('barras', this)">Barras</button>
+          <button type="button" onclick="Sup.mtSetTipoAcero('otro', this)">Otro</button>
+        </div>
+        <div class="field-row" style="margin-top:12px;">
+          <div class="field"><label>Bultos</label><input id="mtBultos" class="mono" type="number" oninput="Sup.mtCalcularAcero()"></div>
+          <div class="field"><label>Peso unitario (MT)</label><input id="mtPesoUnit" class="mono" type="number" step="0.001" oninput="Sup.mtCalcularAcero()"></div>
+        </div>
+        <div class="total-preview" style="text-align:center; padding:12px; background:var(--bg-panel-2); border-radius:10px;">
+          <div class="v mono" id="mtAceroTotal" style="font-size:22px; font-weight:700;">0.0</div><div class="l" style="font-size:11px; color:var(--ink-dim);">Toneladas totales</div>
+        </div>
+      </div>
+      <div class="card hidden" id="mtTonCard">
+        <div class="card-title">Toneladas del viaje</div>
+        <input id="mtTonInput" class="mono" type="number" style="font-size:20px; text-align:center;">
+      </div>
+      <div class="card">
+        <div class="card-title">Hora de despacho</div>
+        <input id="mtHora" type="time">
+      </div>
+      <button class="btn btn-accent btn-block" onclick="Sup.mtRegistrar()">✅ Agregar registro</button>
+
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">Registros cargados en este turno <span class="mono" id="mtTotalMini" style="text-transform:none; font-weight:700; color:var(--ink-bright);"></span></div>
+        <div id="mtRegistros"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Cerrar turno</div>
+        <div class="field"><label>Horas efectivas</label><input id="mtHorasEfectivas" class="mono" type="number" step="0.1"></div>
+        <div class="field"><label>Observación (opcional)</label><input id="mtObs" placeholder="Ej: atraso movimiento pontones"></div>
+        <button class="btn btn-ok btn-block" onclick="Sup.mtCerrarTurno()">Cerrar y aprobar este turno</button>
+      </div>
     </div>
   </div>
 
@@ -105,8 +181,9 @@
       </div>
       <div class="field-row">
         <div class="field"><label>Rate meta (MT/día)</label><input id="nvRateMeta" class="mono" type="number" inputmode="decimal"></div>
-        <div class="field"><label>Inicio programado</label><input id="nvInicioProg" type="datetime-local"></div>
+        <div class="field"><label>Promedio TON/camión (embarque granel)</label><input id="nvPromedioTonCamion" class="mono" type="number" inputmode="decimal" value="30"></div>
       </div>
+      <div class="field"><label>Inicio programado</label><input id="nvInicioProg" type="datetime-local"></div>
       <div class="field"><label>Inicio real (dejar vacío si aún no comienza)</label><input id="nvInicioReal" type="datetime-local"></div>
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 4px;">
         <input type="checkbox" id="nvEsHistorico" style="width:auto;" onchange="Sup.toggleHistorico()"> Cargar como buque histórico (ya finalizado, para base de datos)
@@ -129,9 +206,8 @@
       <div class="card-title">Configuración acero (peso promedio por unidad)</div>
       <div class="field-row">
         <div class="field"><label>Rollo (MT)</label><input id="nvRolloPeso" class="mono" type="number" step="0.1" value="12.5"></div>
-        <div class="field"><label>Barra corta (MT)</label><input id="nvBarraPeso" class="mono" type="number" step="0.001" value="0.045"></div>
+        <div class="field"><label>Barra (MT)</label><input id="nvBarraPeso" class="mono" type="number" step="0.001" value="0.045"></div>
       </div>
-      <div class="field"><label>Barra larga (MT)</label><input id="nvBarraLargaPeso" class="mono" type="number" step="0.001" value="0.085"></div>
     </div>
 
     <div class="card" id="nvBodegasCard">
@@ -193,14 +269,16 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 let BUQUES = [], CAMIONES = [], TURNOS_PEND = [], TODOS_TURNOS = [], detUnsub = null, DETENCIONES = [];
 let nvTurnosHist = [];
+let mtBuqueId = null, mtTurnoId = null, mtTurno = null, mtTurnoUnsub = null, mtBodegaSel = null, mtCamionSel = null, mtTipoAcero = 'rollos';
 
 HTP.listenBuques(bs => {
   BUQUES = bs;
   Sup.renderActivos();
   Sup.renderHistorico();
   Sup.poblaSelectBuqueDetencion();
+  Sup.mtPoblaBuques();
 });
-HTP.listenCamiones(cs => { CAMIONES = cs; Sup.renderCamiones(); });
+HTP.listenCamiones(cs => { CAMIONES = cs; Sup.renderCamiones(); if (mtBuqueId) Sup.mtRenderCamionPick(); });
 HTP.listenTurnosAbiertos(ts => { TURNOS_PEND = ts.filter(t => t.estado === 'pendiente'); Sup.renderTurnosPendientes(); });
 HTP.listenTodosTurnos(ts => { TODOS_TURNOS = ts; Sup.renderActivos(); Sup.renderHistorico(); });
 
@@ -217,6 +295,7 @@ const Sup = {
     cont.innerHTML = activos.map(b => {
       const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
       const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      const proy = HTP.calcularProyeccion(b, r);
       const objetivo = Object.values(b.bodegas).reduce((s, x) => s + (Number(x.tonObjetivo) || 0), 0);
       const pct = objetivo > 0 ? (r.ton / objetivo * 100).toFixed(1) : '0.0';
       const at = b.atraque || {}, de = b.desatraque || {};
@@ -226,6 +305,7 @@ const Sup = {
           <div class="info">
             <div class="n">${b.nombre} ${b.voyage || ''}</div>
             <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(r.ton)}/${HTP.fmtTon(objetivo)} MT (${pct}%)</div>
+            <div style="margin-top:6px;">${HTP.fmtProyeccionBadge(proy.diferenciaHoras)} ${proy.etc ? `<span class="muted" style="font-size:12px;">ETC ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}</div>
           </div>
           ${b.estado === 'gira' ? '<span class="badge badge-warn">En gira</span>' : '<span class="badge badge-ok">Operando</span>'}
         </div>
@@ -328,6 +408,7 @@ const Sup = {
         <div class="field"><label>Rate meta (MT/día)</label><input id="edRate" class="mono" type="number" value="${b.rateMeta}"></div>
         <div class="field"><label>Inicio real</label><input id="edInicioReal" type="datetime-local" value="${b.fechaInicioReal ? b.fechaInicioReal.slice(0,16) : ''}"></div>
       </div>
+      <div class="field"><label>Promedio TON/camión (embarque granel)</label><input id="edPromedioTonCamion" class="mono" type="number" value="${b.promedioTonCamion || 30}"></div>
       <div class="divider"></div>
       <div class="field-row">
         <div class="field"><label>Atraque</label><input id="edAtraqueFecha" type="datetime-local" value="${at.fecha ? at.fecha.slice(0,16) : ''}"></div>
@@ -345,6 +426,7 @@ const Sup = {
       nombre: document.getElementById('edNombre').value.trim().toUpperCase(),
       voyage: document.getElementById('edVoyage').value.trim(),
       rateMeta: Number(document.getElementById('edRate').value) || 0,
+      promedioTonCamion: Number(document.getElementById('edPromedioTonCamion').value) || 30,
     };
     const ir = document.getElementById('edInicioReal').value;
     if (ir) patch.fechaInicioReal = new Date(ir).toISOString();
@@ -495,6 +577,163 @@ const Sup = {
     HTP.toast('Camión eliminado', 'ok');
   },
 
+  /* ---------- TARJA MANUAL (turnos pasados) ---------- */
+  mtPoblaBuques() {
+    const sel = document.getElementById('mtBuque');
+    const prev = sel.value;
+    sel.innerHTML = BUQUES.map(b => `<option value="${b.id}">${b.nombre} ${b.voyage || ''} (${b.estado})</option>`).join('') || '<option value="">Sin buques</option>';
+    if (prev && BUQUES.some(b => b.id === prev)) sel.value = prev;
+    if (!document.getElementById('mtFecha').value) document.getElementById('mtFecha').value = HTP.hoyISO();
+  },
+  mtCambiarBuque() {
+    document.getElementById('mtFormulario').classList.add('hidden');
+    if (mtTurnoUnsub) mtTurnoUnsub();
+    mtTurnoId = null;
+  },
+  async mtAbrirTurno() {
+    const buqueId = document.getElementById('mtBuque').value;
+    const fecha = document.getElementById('mtFecha').value;
+    const turnoNum = Number(document.getElementById('mtTurno').value);
+    if (!buqueId || !fecha) { HTP.toast('Elige buque y fecha', 'bad'); return; }
+    mtBuqueId = buqueId;
+    const id = await HTP.abrirTurno(buqueId, fecha, turnoNum, usuario.nombre + ' (carga manual)');
+    if (mtTurnoUnsub) mtTurnoUnsub();
+    mtTurnoUnsub = firebase.firestore().collection('turnos').doc(id).onSnapshot(d => {
+      mtTurnoId = d.id;
+      mtTurno = d.exists ? { id: d.id, ...d.data() } : null;
+      Sup.mtRenderTurno();
+    });
+    document.getElementById('mtFormulario').classList.remove('hidden');
+    Sup.mtRenderCamionPick();
+    Sup.mtRenderBodegaPick();
+  },
+  mtRenderTurno() {
+    if (!mtTurno) return;
+    const b = BUQUES.find(x => x.id === mtBuqueId);
+    document.getElementById('mtInfoTurno').textContent = `${b ? b.nombre : ''} · Turno ${mtTurno.turno} · ${mtTurno.fecha} · estado: ${mtTurno.estado}`;
+    document.getElementById('mtHorasEfectivas').value = mtTurno.horasEfectivas ?? '';
+    document.getElementById('mtObs').value = mtTurno.observacionCierre || '';
+    document.getElementById('mtTotalMini').textContent = `${HTP.fmtTon(mtTurno.totalToneladas)} MT · ${mtTurno.viajes} viajes`;
+    const regs = (mtTurno.registros || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    const cont = document.getElementById('mtRegistros');
+    cont.innerHTML = regs.length ? regs.map(r => `
+      <div class="row-item">
+        <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${HTP.fmtHora(r.ts)}</div></div>
+        <div class="side mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</div>
+      </div>`).join('') : '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>';
+    Sup.mtRenderBodegaPick();
+  },
+  mtRenderCamionPick() {
+    const cont = document.getElementById('mtCamionPick');
+    if (!cont) return;
+    cont.innerHTML = `
+      <select onchange="Sup.mtElegirCamion(this.value)">
+        <option value="">— Seleccionar patente —</option>
+        ${CAMIONES.map(c => `<option value="${c.patente}" ${mtCamionSel === c.patente ? 'selected' : ''}>${c.patente} (neto ${HTP.fmtTon(c.pesoNeto)} kg)</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px;" onclick="Sup.mtAbrirNuevoCamion()">+ Agregar camión nuevo</button>`;
+  },
+  mtElegirCamion(p) { mtCamionSel = p || null; },
+  mtAbrirNuevoCamion() {
+    HTP.openModal(`
+      <div class="modal-head"><h3>Nuevo camión</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <div class="field"><label>Patente</label><input id="mtNcPatente" class="mono" placeholder="AB1234" style="text-transform:uppercase;"></div>
+      <div class="field-row">
+        <div class="field"><label>Tara vacía (kg)</label><input id="mtNcTaraVacia" class="mono" type="number"></div>
+        <div class="field"><label>Tara llena (kg)</label><input id="mtNcTaraLlena" class="mono" type="number"></div>
+      </div>
+      <button class="btn btn-accent btn-block" onclick="Sup.mtGuardarNuevoCamion()">Guardar camión</button>
+    `);
+  },
+  async mtGuardarNuevoCamion() {
+    const p = document.getElementById('mtNcPatente').value.trim();
+    const tv = document.getElementById('mtNcTaraVacia').value, tl = document.getElementById('mtNcTaraLlena').value;
+    if (!p || !tv || !tl) { HTP.toast('Completa todos los campos', 'bad'); return; }
+    const c = await HTP.guardarCamion(p, tv, tl);
+    mtCamionSel = c.patente;
+    HTP.closeModal();
+    HTP.toast('Camión guardado', 'ok');
+  },
+  mtRenderBodegaPick() {
+    const b = BUQUES.find(x => x.id === mtBuqueId);
+    if (!b) return;
+    const esAcero = b.tipoGranel === 'acero';
+    document.getElementById('mtAceroCard').classList.toggle('hidden', !esAcero);
+    document.getElementById('mtTonCard').classList.toggle('hidden', esAcero);
+    if (esAcero) {
+      const cfg = b.acero || { rolloPeso: 12.5, barraPeso: 0.045 };
+      if (!document.getElementById('mtPesoUnit').value) document.getElementById('mtPesoUnit').value = cfg.rolloPeso;
+    }
+    const activas = Object.values(b.bodegas || {}).filter(x => x.activa);
+    document.getElementById('mtBodegaPick').innerHTML = activas.map(bod => `
+      <button type="button" class="${mtBodegaSel === bod.id ? 'sel' : ''}" onclick="Sup.mtElegirBodega('${bod.id}')">
+        <div class="n">${bod.nombre}</div>
+        <div class="s">${bod.tipo === 'descarga' ? 'Descarga' : 'Carga'} · ${HTP.fmtTon(bod.tonAcumulado)}/${HTP.fmtTon(bod.tonObjetivo)} MT</div>
+      </button>`).join('') || '<p class="muted">Sin bodegas activas</p>';
+    const bodSel = mtBodegaSel && b.bodegas[mtBodegaSel];
+    document.getElementById('mtPctCard').classList.toggle('hidden', !(bodSel && bodSel.tipo === 'descarga'));
+  },
+  mtElegirBodega(id) { mtBodegaSel = id; Sup.mtRenderBodegaPick(); },
+  mtSetTipoAcero(tipo, el) {
+    mtTipoAcero = tipo;
+    el.parentElement.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    const b = BUQUES.find(x => x.id === mtBuqueId);
+    const cfg = (b && b.acero) || { rolloPeso: 12.5, barraPeso: 0.045 };
+    const pesos = { rollos: cfg.rolloPeso, barras: cfg.barraPeso, otro: '' };
+    document.getElementById('mtPesoUnit').value = pesos[tipo];
+    Sup.mtCalcularAcero();
+  },
+  mtCalcularAcero() {
+    const bt = Number(document.getElementById('mtBultos').value) || 0;
+    const p = Number(document.getElementById('mtPesoUnit').value) || 0;
+    document.getElementById('mtAceroTotal').textContent = HTP.fmtTon(bt * p);
+  },
+  mtHoraAISO(fecha, horaStr) {
+    if (!horaStr) return new Date(fecha + 'T00:00:00').toISOString();
+    return new Date(fecha + 'T' + horaStr + ':00').toISOString();
+  },
+  async mtRegistrar() {
+    if (!mtTurnoId) { HTP.toast('Abre un turno primero', 'bad'); return; }
+    if (!mtCamionSel) { HTP.toast('Selecciona un camión', 'bad'); return; }
+    if (!mtBodegaSel) { HTP.toast('Selecciona una bodega', 'bad'); return; }
+    const b = BUQUES.find(x => x.id === mtBuqueId);
+    const bod = b.bodegas[mtBodegaSel];
+    const esAcero = b.tipoGranel === 'acero';
+    const ts = Sup.mtHoraAISO(mtTurno.fecha, document.getElementById('mtHora').value);
+    let ton, extra = {};
+    if (esAcero) {
+      const bultos = Number(document.getElementById('mtBultos').value) || 0;
+      const peso = Number(document.getElementById('mtPesoUnit').value) || 0;
+      ton = bultos * peso;
+      if (!bultos || !peso || ton <= 0) { HTP.toast('Completa bultos y peso unitario', 'bad'); return; }
+      extra = { tipo: 'acero', aceroTipo: mtTipoAcero, bultos, pesoUnitario: peso, detalle: `${bod.nombre} · ${bultos} × ${mtTipoAcero}` };
+    } else {
+      ton = Number(document.getElementById('mtTonInput').value);
+      if (!ton || ton <= 0) { HTP.toast('Ingresa las toneladas del viaje', 'bad'); return; }
+      extra = { tipo: 'granel', detalle: `${bod.nombre} (${bod.tipo})` };
+    }
+    let pct = null;
+    if (bod.tipo === 'descarga' && !esAcero) {
+      const pctVal = document.getElementById('mtPctInput').value;
+      if (pctVal !== '') pct = Number(pctVal);
+    }
+    await HTP.agregarRegistro(mtTurnoId, { camion: mtCamionSel, bodegaId: mtBodegaSel, toneladas: ton, pctRestante: pct, ts, ...extra });
+    await HTP.ajustarBodega(mtBuqueId, mtBodegaSel, ton, pct);
+    document.getElementById('mtTonInput').value = '';
+    document.getElementById('mtBultos').value = '';
+    document.getElementById('mtHora').value = '';
+    Sup.mtCalcularAcero();
+    HTP.toast('Registro agregado', 'ok');
+  },
+  async mtCerrarTurno() {
+    if (!mtTurnoId) return;
+    const horas = document.getElementById('mtHorasEfectivas').value;
+    const obs = document.getElementById('mtObs').value.trim();
+    await HTP.cerrarYAprobarTurno(mtTurnoId, horas, obs, usuario.nombre);
+    HTP.toast('Turno cerrado y aprobado', 'ok');
+  },
+
   /* ---------- CREAR / CARGAR BUQUE ---------- */
   renderNvBodegas() {
     const cont = document.getElementById('nvBodegas');
@@ -552,6 +791,7 @@ const Sup = {
       nombre, voyage: document.getElementById('nvVoyage').value.trim(),
       tipoOperacion: tipoOp, tipoGranel: document.getElementById('nvMaterial').value,
       rateMeta: Number(document.getElementById('nvRateMeta').value) || 0,
+      promedioTonCamion: Number(document.getElementById('nvPromedioTonCamion').value) || 30,
       fechaInicioProgramado: document.getElementById('nvInicioProg').value ? new Date(document.getElementById('nvInicioProg').value).toISOString() : null,
       fechaInicioReal: inicioRealVal ? new Date(inicioRealVal).toISOString() : (esHist ? new Date().toISOString() : null),
       atraque: { fecha: atraqueFecha ? new Date(atraqueFecha).toISOString() : null, practico: document.getElementById('nvAtraquePractico').value.trim() },
@@ -564,8 +804,7 @@ const Sup = {
         aceroAcumulado: 0,
         acero: {
           rolloPeso: Number(document.getElementById('nvRolloPeso').value) || 12.5,
-          barraPeso: Number(document.getElementById('nvBarraPeso').value) || 0.045,
-          barraLargaPeso: Number(document.getElementById('nvBarraLargaPeso').value) || 0.085
+          barraPeso: Number(document.getElementById('nvBarraPeso').value) || 0.045
         }
       });
     }

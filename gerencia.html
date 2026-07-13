@@ -93,12 +93,14 @@ const Ger = {
     cont.innerHTML = activos.map(b => {
       const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
       const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      const proy = HTP.calcularProyeccion(b, r);
       return `
       <div class="card">
         <div class="buque-card-head" onclick="Ger.toggle('${b.id}')">
           <div class="info">
             <div class="n">${b.nombre} ${b.voyage || ''}</div>
             <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtDuracion(r.horas * 60)} efectivas · ${r.turnos} turnos</div>
+            <div style="margin-top:6px;">${HTP.fmtProyeccionBadge(proy.diferenciaHoras)} ${proy.etc ? `<span class="muted" style="font-size:12px;">ETC ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}</div>
           </div>
           ${b.estado === 'gira' ? '<span class="badge badge-warn">En gira</span>' : '<span class="badge badge-ok">Operando</span>'}
         </div>
@@ -136,6 +138,7 @@ const Ger = {
     if (!el) return;
     const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === id).sort((a,x) => (a.fecha+a.turno).localeCompare(x.fecha+x.turno));
     const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+    const proy = HTP.calcularProyeccion(b, r);
     const at = b.atraque || {}, de = b.desatraque || {};
 
     el.innerHTML = `
@@ -186,6 +189,7 @@ const Ger = {
       </div>
 
       <div class="card-title">KPIs (rendimiento por turno)</div>
+      <p style="margin-bottom:10px;">${HTP.fmtProyeccionBadge(proy.diferenciaHoras)} ${proy.etc ? `<span class="muted" style="font-size:12.5px;">· ETC estimado ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}</p>
       <div class="kpi-grid cols-4">
         <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate)}</div><div class="l">MT / hora</div></div>
         <div class="kpi"><div class="v mono">${HTP.fmtTon(r.rate * 24)}</div><div class="l">MT / día</div></div>

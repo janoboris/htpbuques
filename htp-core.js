@@ -89,6 +89,7 @@ const HTP = (() => {
       fechaCierre: null,
       atraque: data.atraque || { fecha: null, practico: '' },
       desatraque: data.desatraque || { fecha: null, practico: '' },
+      promedioTonCamion: Number(data.promedioTonCamion) || 30,
       esHistorico: !!data.esHistorico,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       creadoPor: data.creadoPor || null
@@ -174,6 +175,8 @@ const HTP = (() => {
       registros: [],
       totalToneladas: 0,
       viajes: 0,
+      viajesCancha: 0,
+      toneladasCancha: 0,
       tarjaNombre: usuario || null,
       observacionCierre: '',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -187,6 +190,19 @@ const HTP = (() => {
       registros: firebase.firestore.FieldValue.arrayUnion(reg),
       totalToneladas: firebase.firestore.FieldValue.increment(Number(registro.toneladas) || 0),
       viajes: firebase.firestore.FieldValue.increment(1)
+    });
+    return reg;
+  }
+
+  // Embarque de granel: el camión descarga a cancha (acopio) y NO cuenta como
+  // tonelaje embarcado todavía — eso lo registra por separado la grúa al cargar
+  // la bodega (agregarRegistro normal). Esto evita contar el material dos veces.
+  async function agregarRegistroCancha(turnoId, registro) {
+    const reg = { ...registro, tipo: 'camion_cancha', id: 'r' + Date.now() + Math.random().toString(36).slice(2, 7), ts: registro.ts || new Date().toISOString() };
+    await col('turnos').doc(turnoId).update({
+      registros: firebase.firestore.FieldValue.arrayUnion(reg),
+      viajesCancha: firebase.firestore.FieldValue.increment(1),
+      toneladasCancha: firebase.firestore.FieldValue.increment(Number(registro.toneladas) || 0)
     });
     return reg;
   }
@@ -227,6 +243,19 @@ const HTP = (() => {
 
   async function aprobarTurno(turnoId, supervisor) {
     await col('turnos').doc(turnoId).update({ estado: 'aprobado', aprobadoPor: supervisor || null, aprobadoEn: new Date().toISOString() });
+  }
+
+  // Usado por Supervisor al armar una tarja manual de un turno pasado: cierra
+  // y aprueba en un solo paso, sin pasar por "pendiente".
+  async function cerrarYAprobarTurno(turnoId, horasEfectivas, observacion, aprobadoPor) {
+    await col('turnos').doc(turnoId).update({
+      estado: 'aprobado',
+      horaTermino: new Date().toISOString(),
+      horasEfectivas: Number(horasEfectivas) || 0,
+      observacionCierre: observacion || '',
+      aprobadoPor: aprobadoPor || null,
+      aprobadoEn: new Date().toISOString()
+    });
   }
   async function rechazarTurno(turnoId, supervisor, motivo) {
     await col('turnos').doc(turnoId).update({ estado: 'abierto', horaTermino: null, motivoRechazo: motivo || '', rechazadoPor: supervisor || null });
@@ -332,6 +361,30 @@ const HTP = (() => {
     if (!b.tonAcumulado) return 'pendiente';
     if (avanceBodega(b) >= 100) return 'finalizada';
     return 'trabajando';
+  }
+
+  // Proyección: cuánto falta, ETC (fecha estimada de término al rate actual)
+  // y cuántas horas de adelanto/atraso llevamos respecto al rate programado.
+  function calcularProyeccion(buque, r) {
+    const objetivo = buque && buque.bodegas ? Object.values(buque.bodegas).reduce((s, b) => s + (Number(b.tonObjetivo) || 0), 0) : 0;
+    const restante = Math.max(0, objetivo - (r ? r.ton : 0));
+    const horasRestantes = r && r.rate > 0 ? restante / r.rate : null;
+    const etc = horasRestantes !== null ? new Date(Date.now() + horasRestantes * 3600000).toISOString() : null;
+    const rateMetaHora = buque && buque.rateMeta > 0 ? buque.rateMeta / 24 : 0;
+    let diferenciaHoras = null;
+    if (rateMetaHora > 0 && r && r.horas > 0) {
+      const avanceEsperado = rateMetaHora * r.horas;
+      diferenciaHoras = (r.ton - avanceEsperado) / rateMetaHora;
+    }
+    return { objetivo, restante, horasRestantes, etc, diferenciaHoras };
+  }
+
+  function fmtProyeccionBadge(diferenciaHoras) {
+    if (diferenciaHoras === null) return '';
+    const h = Math.abs(diferenciaHoras).toFixed(1);
+    return diferenciaHoras >= 0
+      ? `<span class="badge badge-ok">+${h} h adelanto</span>`
+      : `<span class="badge badge-bad">-${h} h atraso</span>`;
   }
 
   function calcularTiempos(buque, detenciones) {
@@ -454,10 +507,10 @@ const HTP = (() => {
     BODEGAS_BASE, bodegasIniciales, nuevaBodega,
     listenBuques, listenBuque, crearBuque, actualizarBuque, ajustarBodega, setBodegaAbsoluto,
     cerrarBuque, reabrirBuque, pausarGira, reanudarDeGira, eliminarBuque,
-    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, cerrarTurno, aprobarTurno, rechazarTurno, crearTurnoHistorico,
+    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico,
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
-    totalToneladas, sumarAcero, avanceBodega, estadoBodega, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, camionesPorHora,
+    totalToneladas, sumarAcero, avanceBodega, estadoBodega, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, camionesPorHora,
     fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, hoyISO, turnoActualNum,
     toast, openModal, closeModal, confirmar
   };
