@@ -446,7 +446,7 @@ const Tarja = {
     if (!regs.length) { cont.innerHTML = '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>'; return; }
     cont.innerHTML = regs.map(r => `
       <div class="row-item">
-        <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${r.ts ? r.ts.slice(0,10) : ''} ${HTP.fmtHora(r.ts)}</div></div>
+        <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${r.ts ? HTP.fechaLocalCorta(r.ts) : ''} ${HTP.fmtHora(r.ts)}</div></div>
         <div class="side" style="display:flex; align-items:center; gap:8px;">
           <span class="mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</span>
           <button class="btn btn-ghost btn-xs" onclick="Tarja.abrirEditarRegistro('${r.id}')" title="Corregir">✏️</button>

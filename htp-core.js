@@ -248,6 +248,23 @@ const HTP = (() => {
   // ¿La hora digitada corresponde a la ventana nominal del turno elegido?
   // (1: 00-08, 2: 08-16, 3: 16-00). Evita que un viaje quede mezclado en el
   // turno equivocado por un error de tipeo en la hora.
+  // Un ISO guardado (ej. "2026-07-03T07:26:00.000Z") está en UTC. Para
+  // agrupar/mostrar por hora hay que usar la hora LOCAL del navegador
+  // (Chile), nunca cortar el string ISO directo — si no, todo aparece
+  // corrido según el huso horario.
+  function claveHoraLocal(iso) {
+    const d = new Date(iso);
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    return `${y}-${m}-${day}T${h}`;
+  }
+  function horaLocalNum(iso) { return new Date(iso).getHours(); }
+  function fechaLocalCorta(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function horaFueraDeTurno(turnoNum, horaStr) {
     if (!horaStr) return false;
     const h = parseInt(horaStr.split(':')[0], 10);
@@ -504,7 +521,7 @@ const HTP = (() => {
       const porTurnoReal = { 1: [], 2: [], 3: [] };
       registrosDia.forEach(r => {
         if (!r.ts) { porTurnoReal[r._turnoOrigen] && porTurnoReal[r._turnoOrigen].push(r); return; }
-        const h = parseInt(r.ts.slice(11, 13), 10);
+        const h = horaLocalNum(r.ts);
         const n = h < 8 ? 1 : h < 16 ? 2 : 3;
         porTurnoReal[n].push(r);
       });
@@ -516,9 +533,9 @@ const HTP = (() => {
         regs.forEach(r => {
           if (!r.ts) return;
           const bodNombre = (r.bodegaId && buque && buque.bodegas && buque.bodegas[r.bodegaId]) ? buque.bodegas[r.bodegaId].nombre : (r.bodegaId || '—');
-          const horaStr = r.ts.slice(11, 16);
-          const key = r.ts.slice(0, 13) + '|' + (r.bodegaId || '');
-          if (!buckets[key]) buckets[key] = { key, hora: r.ts.slice(0, 13), bodega: bodNombre, count: 0, toneladas: 0, reasignado: r._turnoOrigen !== n };
+          const claveHora = claveHoraLocal(r.ts);
+          const key = claveHora + '|' + (r.bodegaId || '');
+          if (!buckets[key]) buckets[key] = { key, hora: claveHora, bodega: bodNombre, count: 0, toneladas: 0, reasignado: r._turnoOrigen !== n };
           buckets[key].count++;
           buckets[key].toneladas += Number(r.toneladas) || 0;
         });
@@ -867,7 +884,7 @@ const HTP = (() => {
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, listenTodasDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
     totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML,
-    fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, hoyISO, turnoActualNum, wireHorasRapidas,
+    fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, fechaLocalCorta, hoyISO, turnoActualNum, wireHorasRapidas,
     toast, openModal, closeModal, confirmar
   };
 })();
