@@ -291,7 +291,7 @@ const Tarja = {
   },
 
   renderBodegaPick() {
-    const activas = HTP.bodegasOrdenadas(buqueActual).filter(b => b.activa);
+    const activas = HTP.bodegasOrdenadas(buqueActual).filter(b => b.activa).reverse();
     const html = activas.map(b => `
       <button type="button" class="${bodegaSeleccionada === b.id ? 'sel' : ''}" onclick="Tarja.elegirBodega('${b.id}')">
         <div class="n">${b.nombre}</div>
@@ -487,7 +487,7 @@ const Tarja = {
   renderCamionesPorHora() {
     const cont = document.getElementById('camionesPorHora');
     if (!cont) return;
-    cont.innerHTML = HTP.tablaCamionesPorHoraHTML([turnoActual], buqueActual);
+    cont.innerHTML = HTP.tablaCamionesPorHoraHTML([turnoActual], buqueActual, [], true);
   },
 
   /* ---------- REGISTRO GRANEL ---------- */

@@ -9,8 +9,7 @@
   .bodega-card { background: var(--bg-panel-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; }
   .bodega-card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .bodega-card .head .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
-  .bodega-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 640px) { .bodega-grid { grid-template-columns: 1fr 1fr; } }
+  .bodega-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
   .buque-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; cursor: pointer; }
   .buque-card-head .info .n { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
   .buque-card-head .info .s { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
@@ -77,10 +76,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-let BUQUES = [], detUnsubs = {}, turnoUnsubs = {}, TODOS_TURNOS = [];
+let BUQUES = [], detUnsubs = {}, turnoUnsubs = {}, TODOS_TURNOS = [], TODAS_DETENCIONES = [];
 
 HTP.listenBuques(bs => { BUQUES = bs; Ger.renderActivos(); Ger.renderHistorico(); });
 HTP.listenTodosTurnos(ts => { TODOS_TURNOS = ts; Ger.renderActivos(); Ger.renderHistorico(); });
+HTP.listenTodasDetenciones(ds => { TODAS_DETENCIONES = ds; Ger.renderActivos(); });
 
 const Ger = {
   renderActivos() {
@@ -92,7 +92,9 @@ const Ger = {
     }
     cont.innerHTML = activos.map(b => {
       const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
-      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      const detBuque = TODAS_DETENCIONES.filter(d => d.buqueId === b.id);
+      const atracado = HTP.estaAtracado(b);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque, detBuque);
       const proy = HTP.calcularProyeccion(b, r);
       return `
       <div class="card">
@@ -100,13 +102,16 @@ const Ger = {
           <div class="info">
             <div class="n">${b.nombre} ${b.voyage || ''}</div>
             <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtDuracion(r.horas * 60)} efectivas · ${r.turnos} turnos</div>
-            <div style="margin-top:6px;">${HTP.fmtProyeccionBadge(proy.diferenciaHoras)} ${proy.etc ? `<span class="muted" style="font-size:12px;">ETC ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}</div>
+            ${atracado ? `<div class="hero-kpis">
+              <span class="hero-badge ${proy.diferenciaHoras === null ? 'badge-muted' : proy.diferenciaHoras >= 0 ? 'badge-ok' : 'badge-bad'}">${proy.diferenciaHoras === null ? 'Sin meta' : (proy.diferenciaHoras >= 0 ? '+' : '') + proy.diferenciaHoras.toFixed(1) + ' h'}</span>
+              ${proy.etc ? `<span class="hero-etc">ETC ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}
+            </div>` : `<div class="hero-kpis"><span class="hero-etc muted">Aún no atraca — sin rate ni ETC</span></div>`}
           </div>
-          ${b.estado === 'gira' ? '<span class="badge badge-warn">En gira</span>' : '<span class="badge badge-ok">Operando</span>'}
+          ${HTP.badgeEstadoBuque(b)}
         </div>
         <div class="kpi-grid" style="margin-top:12px;">
-          <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento MT/h</div></div>
-          <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate * 24)}</div><div class="l">Rendimiento / día</div></div>
+          <div class="kpi"><div class="v mono" style="font-size:26px;">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento MT/h</div></div>
+          <div class="kpi"><div class="v mono" style="font-size:26px;">${HTP.fmtRate(r.rate * 24)}</div><div class="l">Rendimiento / día</div></div>
           <div class="kpi"><div class="v mono">${HTP.fmtPct(r.productividad)}%</div><div class="l">Productividad</div></div>
         </div>
         <div class="hidden" id="detalle-${b.id}" style="margin-top:14px;"></div>
@@ -137,7 +142,7 @@ const Ger = {
     const el = document.getElementById('detalle-' + id);
     if (!el) return;
     const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === id).sort((a,x) => (a.fecha+a.turno).localeCompare(x.fecha+x.turno));
-    const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+    const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque, detenciones);
     const proy = HTP.calcularProyeccion(b, r);
     const at = b.atraque || {}, de = b.desatraque || {};
 
@@ -158,7 +163,7 @@ const Ger = {
 
       <div class="card-title">Estado bodegas</div>
       <div class="bodega-grid" style="margin-bottom:16px;">
-        ${HTP.bodegasOrdenadas(b).filter(x => x.activa).map(bod => {
+        ${HTP.bodegasOrdenadas(b).filter(x => x.activa).reverse().map(bod => {
           const avance = HTP.avanceBodega(bod);
           const estado = HTP.estadoBodega(bod);
           const etiquetas = { pendiente: 'En espera', trabajando: bod.tipo === 'descarga' ? 'Descargando' : 'Cargando', rematada: 'Rematada', inactiva: 'Inactiva' };
@@ -176,13 +181,9 @@ const Ger = {
         }).join('') || '<p class="muted">Sin bodegas activas</p>'}
       </div>
 
-      <div class="card-title">Turnos</div>
+      <div class="card-title">Camiones por hora</div>
       <div style="margin-bottom:16px;">
-        ${turnosBuque.length ? turnosBuque.map(t => `
-          <div class="row-item">
-            <div class="main"><div class="t">Turno ${t.turno} · ${t.fecha}</div><div class="s">${t.observacionCierre || ''}</div></div>
-            <div class="side mono">${HTP.fmtTon(t.totalToneladas)} MT · ${t.horasEfectivas ?? '—'} h</div>
-          </div>`).join('') : '<p class="muted" style="padding:10px 0;">Sin turnos registrados</p>'}
+        ${HTP.tablaCamionesPorHoraHTML(turnosBuque, b, detenciones, true)}
       </div>
 
       <div class="card-title">Detenciones</div>

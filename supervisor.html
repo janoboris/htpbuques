@@ -9,8 +9,7 @@
   .bodega-card { background: var(--bg-panel-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; }
   .bodega-card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .bodega-card .head .n { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); }
-  .bodega-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 640px) { .bodega-grid { grid-template-columns: 1fr 1fr; } }
+  .bodega-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
   .buque-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; cursor: pointer; }
   .buque-card-head .info .n { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
   .buque-card-head .info .s { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
@@ -268,7 +267,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-let BUQUES = [], CAMIONES = [], TURNOS_PEND = [], TODOS_TURNOS = [], detUnsub = null, DETENCIONES = [];
+let BUQUES = [], CAMIONES = [], TURNOS_PEND = [], TODOS_TURNOS = [], TODAS_DETENCIONES = [], detUnsub = null, DETENCIONES = [];
 let nvTurnosHist = [];
 let mtBuqueId = null, mtTurnoId = null, mtTurno = null, mtTurnoUnsub = null, mtBodegaSel = null, mtCamionSel = null, mtTipoAcero = 'rollos';
 
@@ -282,6 +281,7 @@ HTP.listenBuques(bs => {
 HTP.listenCamiones(cs => { CAMIONES = cs; Sup.renderCamiones(); if (mtBuqueId) Sup.mtRenderCamionPick(); });
 HTP.listenTurnosAbiertos(ts => { TURNOS_PEND = ts.filter(t => t.estado === 'pendiente'); Sup.renderTurnosPendientes(); });
 HTP.listenTodosTurnos(ts => { TODOS_TURNOS = ts; Sup.renderActivos(); Sup.renderHistorico(); });
+HTP.listenTodasDetenciones(ds => { TODAS_DETENCIONES = ds; Sup.renderActivos(); });
 
 const Sup = {
 
@@ -295,7 +295,9 @@ const Sup = {
     }
     cont.innerHTML = activos.map(b => {
       const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
-      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
+      const detBuque = TODAS_DETENCIONES.filter(d => d.buqueId === b.id);
+      const atracado = HTP.estaAtracado(b);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque, detBuque);
       const proy = HTP.calcularProyeccion(b, r);
       const objetivo = Object.values(b.bodegas).reduce((s, x) => s + (Number(x.tonObjetivo) || 0), 0);
       const pct = objetivo > 0 ? (r.ton / objetivo * 100).toFixed(1) : '0.0';
@@ -306,14 +308,17 @@ const Sup = {
           <div class="info">
             <div class="n">${b.nombre} ${b.voyage || ''}</div>
             <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(r.ton)}/${HTP.fmtTon(objetivo)} MT (${pct}%)</div>
-            <div style="margin-top:6px;">${HTP.fmtProyeccionBadge(proy.diferenciaHoras)} ${proy.etc ? `<span class="muted" style="font-size:12px;">ETC ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}</div>
+            ${atracado ? `<div class="hero-kpis">
+              <span class="hero-badge ${proy.diferenciaHoras === null ? 'badge-muted' : proy.diferenciaHoras >= 0 ? 'badge-ok' : 'badge-bad'}">${proy.diferenciaHoras === null ? 'Sin meta' : (proy.diferenciaHoras >= 0 ? '+' : '') + proy.diferenciaHoras.toFixed(1) + ' h'}</span>
+              ${proy.etc ? `<span class="hero-etc">ETC ${HTP.fmtFechaHora(proy.etc)}</span>` : ''}
+            </div>` : `<div class="hero-kpis"><span class="hero-etc muted">Aún no atraca — sin rate ni ETC</span></div>`}
           </div>
-          ${b.estado === 'gira' ? '<span class="badge badge-warn">En gira</span>' : '<span class="badge badge-ok">Operando</span>'}
+          ${HTP.badgeEstadoBuque(b)}
         </div>
         <div class="hidden" id="detalle-${b.id}" style="margin-top:14px;">
           <div class="kpi-grid cols-4">
-            <div class="kpi"><div class="v mono">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento</div></div>
-            <div class="kpi"><div class="v mono">${HTP.fmtDuracion(r.horas * 60)}</div><div class="l">Horas efectivas</div></div>
+            <div class="kpi"><div class="v mono" style="font-size:26px;">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento</div></div>
+            <div class="kpi"><div class="v mono" style="font-size:26px;">${HTP.fmtDuracion(r.horas * 60)}</div><div class="l">Horas efectivas</div></div>
             <div class="kpi"><div class="v mono">${r.turnos}</div><div class="l">Turnos</div></div>
             <div class="kpi"><div class="v mono">${HTP.fmtPct(r.productividad)}%</div><div class="l">Productividad</div></div>
           </div>
@@ -323,11 +328,11 @@ const Sup = {
             <div><div class="l">Desatraque</div><div class="v">${de.fecha ? HTP.fmtFechaHora(de.fecha) : '—'} ${de.practico ? '· ' + de.practico : ''}</div></div>
           </div>
           <div class="bodega-grid">
-            ${HTP.bodegasOrdenadas(b).filter(x => x.activa).map(bod => Sup.bodegaCardHTML(b.id, bod)).join('') || '<p class="muted">Sin bodegas activas</p>'}
+            ${HTP.bodegasOrdenadas(b).filter(x => x.activa).reverse().map(bod => Sup.bodegaCardHTML(b.id, bod)).join('') || '<p class="muted">Sin bodegas activas</p>'}
           </div>
           <div class="divider"></div>
           <div class="card-title">Camiones por hora</div>
-          ${HTP.tablaCamionesPorHoraHTML(turnosBuque, b)}
+          ${HTP.tablaCamionesPorHoraHTML(turnosBuque, b, detBuque)}
           <div class="accion-row">
             <button class="btn btn-ghost btn-sm" onclick="Sup.abrirModalEditar('${b.id}')">✏️ Editar datos</button>
             ${b.estado === 'abierto'
@@ -736,7 +741,7 @@ const Sup = {
       const pesos = { rollos: cfg.rolloPeso, barras: cfg.barraPeso, otro: '' };
       if (!document.getElementById('mtPesoUnit').value) document.getElementById('mtPesoUnit').value = pesos[mtTipoAcero] ?? cfg.rolloPeso;
     }
-    const activas = HTP.bodegasOrdenadas(b).filter(x => x.activa);
+    const activas = HTP.bodegasOrdenadas(b).filter(x => x.activa).reverse();
     document.getElementById('mtBodegaPick').innerHTML = activas.map(bod => `
       <button type="button" class="${mtBodegaSel === bod.id ? 'sel' : ''}" onclick="Sup.mtElegirBodega('${bod.id}')">
         <div class="n">${bod.nombre}</div>

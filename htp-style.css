@@ -272,14 +272,26 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .bodega-panel .bp-remate { font-size: 11.5px; color: var(--bad); margin-top: 8px; font-weight: 600; }
 
 /* ---------- Camiones por hora, agrupado por día ---------- */
-.cph-dia { margin-bottom: 18px; }
+.cph-dia { margin-bottom: 22px; }
 .cph-dia:last-child { margin-bottom: 0; }
-.cph-dia-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); margin-bottom: 6px; }
+.cph-dia-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); margin-bottom: 10px; }
 .cph-fecha { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); text-transform: capitalize; }
 .cph-total { font-size: 12px; color: var(--ink-dim); }
+.cph-turno { background: var(--bg-panel-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px; }
+.cph-turno-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.cph-turno-n { font-size: 13px; font-weight: 700; color: var(--ink-bright); }
+.cph-turno-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+.cph-turno-kpis > div { text-align: center; }
+.cph-turno-kpis .l { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); margin-bottom: 2px; }
+.cph-turno-kpis .v { font-size: 14px; font-weight: 700; color: var(--ink-bright); }
 table.cph-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.cph-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); padding: 5px 6px; }
 table.cph-table td { padding: 6px; border-top: 1px solid var(--border-soft); color: var(--ink); }
 table.cph-table td:first-child, table.cph-table th:first-child { color: var(--ink-bright); font-weight: 600; }
+
+/* ---------- Encabezado de rendimiento (más prominente) ---------- */
+.hero-kpis { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.hero-badge { font-size: 15px; padding: 6px 14px; border-radius: 20px; font-weight: 800; }
+.hero-etc { font-size: 13.5px; color: var(--ink); }
 
 ::selection { background: var(--forge); color: white; }

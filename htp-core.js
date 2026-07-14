@@ -9,6 +9,7 @@
 const HTP = (() => {
 
   let db = null;
+  const _turnoCache = {};
   let ready = false;
   const liveListeners = [];
 
@@ -314,6 +315,53 @@ const HTP = (() => {
     await col('turnos').doc(turnoId).update({ estado: 'abierto', horaTermino: null, motivoRechazo: motivo || '', rechazadoPor: supervisor || null });
   }
 
+  // Elimina un turno completo, revirtiendo antes todo el tonelaje que sus
+  // registros hayan sumado a las bodegas del buque.
+  async function eliminarTurnoCompleto(turnoId, buqueId) {
+    const doc = await col('turnos').doc(turnoId).get();
+    if (!doc.exists) return;
+    const t = doc.data();
+    for (const r of (t.registros || [])) {
+      if (r.bodegaId && buqueId) {
+        await ajustarBodega(buqueId, r.bodegaId, -(Number(r.toneladas) || 0), null);
+      }
+    }
+    await col('turnos').doc(turnoId).delete();
+  }
+
+  // Modal autocontenido para editar (horas efectivas / observación) o
+  // eliminar un turno completo, usable desde cualquier pantalla (Supervisor,
+  // Gerencia) sin tener que reimplementar el modal en cada una.
+  function abrirModalEditarTurnoPorId(turnoId, buqueId) {
+    const t = _turnoCache[turnoId];
+    if (!t) return;
+    openModal(`
+      <div class="modal-head"><h3>Turno ${t.turno} · ${t.fecha}</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <p class="muted" style="font-size:13px; margin-bottom:14px;">${fmtTon(t.totalToneladas)} MT · ${t.viajes || 0} viajes · estado: ${t.estado}</p>
+      <div class="field"><label>Horas efectivas</label><input id="etHoras" class="mono" type="number" step="0.1" value="${t.horasEfectivas ?? ''}" placeholder="Vacío = 8h por defecto"></div>
+      <div class="field"><label>Observación</label><input id="etObs" value="${(t.observacionCierre || '').replace(/"/g, '&quot;')}"></div>
+      <button class="btn btn-accent btn-block" onclick="HTP.guardarEdicionTurno('${turnoId}')">Guardar cambios</button>
+      <div class="divider"></div>
+      <button class="btn btn-bad btn-block" onclick="HTP.confirmarEliminarTurno('${turnoId}','${buqueId || ''}')">🗑 Eliminar este turno completo</button>
+    `);
+  }
+  async function guardarEdicionTurno(turnoId) {
+    const horasVal = document.getElementById('etHoras').value;
+    const obs = document.getElementById('etObs').value.trim();
+    await col('turnos').doc(turnoId).update({
+      horasEfectivas: horasVal === '' ? null : Number(horasVal),
+      observacionCierre: obs
+    });
+    closeModal();
+    toast('Turno actualizado', 'ok');
+  }
+  async function confirmarEliminarTurno(turnoId, buqueId) {
+    if (!confirmar('¿Eliminar este turno completo? Se descuenta todo su tonelaje de la(s) bodega(s). Esta acción no se puede deshacer.')) return;
+    await eliminarTurnoCompleto(turnoId, buqueId || null);
+    closeModal();
+    toast('Turno eliminado', 'ok');
+  }
+
   /* ==================================================================
      CAMIONES (flota maestra — doc id = patente)
      ================================================================== */
@@ -345,6 +393,13 @@ const HTP = (() => {
       const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       arr.sort((a, b) => new Date(b.horaInicio) - new Date(a.horaInicio));
       cb(arr);
+    });
+  }
+
+  function listenTodasDetenciones(cb) {
+    return col('detenciones').onSnapshot(snap => {
+      trackSnapshotLiveness(snap);
+      cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }
 
@@ -387,58 +442,91 @@ const HTP = (() => {
     return Object.values(buckets).sort((a, b) => a.key.localeCompare(b.key));
   }
 
-  // Agrupa por DÍA (más reciente primero) y dentro de cada día por hora
-  // (ascendente, para leer el turno de corrido). Incluye el tonelaje
-  // esperado por hora (rate meta / 24) para comparar de un vistazo.
-  function camionesPorDia(turnos, buque) {
-    const registros = [];
-    (turnos || []).forEach(t => (t.registros || []).forEach(r => registros.push(r)));
+  // Agrupa los turnos por DÍA (más reciente primero) y dentro de cada día
+  // por TURNO (1, 2, 3 en orden), para poder mostrar un resumen propio de
+  // cada turno: rate real, rate esperado, cumplimiento y qué bodega(s) trabajó.
+  function resumenPorDia(turnos, buque, detenciones) {
     const porDia = {};
-    registros.forEach(r => {
-      if (!r.ts) return;
-      const fecha = r.ts.slice(0, 10);
-      const horaKey = r.ts.slice(0, 13);
-      if (!porDia[fecha]) porDia[fecha] = {};
-      if (!porDia[fecha][horaKey]) porDia[fecha][horaKey] = { key: horaKey, count: 0, toneladas: 0 };
-      porDia[fecha][horaKey].count++;
-      porDia[fecha][horaKey].toneladas += Number(r.toneladas) || 0;
+    (turnos || []).forEach(t => {
+      if (!t.fecha) return;
+      if (!porDia[t.fecha]) porDia[t.fecha] = {};
+      porDia[t.fecha][t.turno] = t;
     });
-    const esperadoHora = buque && buque.rateMeta > 0 ? buque.rateMeta / 24 : 0;
+    const rateMetaHora = buque && buque.rateMeta > 0 ? buque.rateMeta / 24 : 0;
     return Object.keys(porDia).sort().reverse().map(fecha => {
-      const bloques = Object.values(porDia[fecha]).sort((a, b) => a.key.localeCompare(b.key));
-      const totalCamiones = bloques.reduce((s, b) => s + b.count, 0);
-      const totalToneladas = bloques.reduce((s, b) => s + b.toneladas, 0);
-      return { fecha, bloques, totalCamiones, totalToneladas, esperadoHora };
+      const turnosDia = [1, 2, 3].map(n => porDia[fecha][n]).filter(Boolean);
+      const bloquesPorTurno = turnosDia.map(t => {
+        const buckets = {};
+        (t.registros || []).forEach(r => {
+          if (!r.ts) return;
+          const key = r.ts.slice(0, 13);
+          if (!buckets[key]) buckets[key] = { key, count: 0, toneladas: 0 };
+          buckets[key].count++;
+          buckets[key].toneladas += Number(r.toneladas) || 0;
+        });
+        const bloques = Object.values(buckets).sort((a, b) => a.key.localeCompare(b.key));
+        const horas = horasDefaultTurno(t, detenciones);
+        const ton = Number(t.totalToneladas) || 0;
+        const rateReal = horas > 0 ? ton / horas : 0;
+        const cumplimiento = rateMetaHora > 0 ? (rateReal / rateMetaHora) * 100 : null;
+        const bodegaIds = [...new Set((t.registros || []).map(r => r.bodegaId).filter(Boolean))];
+        const bodegaNombres = bodegaIds.map(id => (buque && buque.bodegas && buque.bodegas[id]) ? buque.bodegas[id].nombre : id);
+        return { turno: t, bloques, horas, ton, rateReal, cumplimiento, bodegaNombres };
+      });
+      const totalCamiones = turnosDia.reduce((s, t) => s + (Number(t.viajes) || 0), 0);
+      const totalToneladas = turnosDia.reduce((s, t) => s + (Number(t.totalToneladas) || 0), 0);
+      return { fecha, bloquesPorTurno, totalCamiones, totalToneladas, rateMetaHora };
     });
   }
 
-  function tablaCamionesPorHoraHTML(turnos, buque) {
-    const dias = camionesPorDia(turnos, buque);
-    if (!dias.length) return '<p class="muted" style="font-size:12.5px; padding:6px 0;">Aún sin registros con hora</p>';
+  function tablaCamionesPorHoraHTML(turnos, buque, detenciones, soloLectura) {
+    const dias = resumenPorDia(turnos, buque, detenciones);
+    if (!dias.length) return '<p class="muted" style="font-size:12.5px; padding:6px 0;">Aún sin turnos registrados</p>';
+    const rangosTurno = { 1: '00:00–08:00', 2: '08:00–16:00', 3: '16:00–00:00' };
     return dias.map(dia => {
       const fechaFmt = new Date(dia.fecha + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: 'long' });
-      const rateDia = dia.esperadoHora ? dia.esperadoHora * 24 : 0;
-      const rows = dia.bloques.map(b => {
-        const h = parseInt(b.key.slice(11, 13), 10);
-        const rango = `${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00`;
-        let cumplHtml = '<span class="faint">—</span>';
-        if (dia.esperadoHora > 0) {
-          const cumpl = (b.toneladas / dia.esperadoHora) * 100;
-          const cls = cumpl >= 100 ? 'badge-ok' : cumpl >= 70 ? 'badge-warn' : 'badge-bad';
-          cumplHtml = `<span class="badge ${cls}">${cumpl.toFixed(0)}%</span>`;
-        }
-        return `<tr><td>${rango}</td><td class="mono">${b.count}</td><td class="mono">${fmtTon(b.toneladas)}</td><td class="mono faint">${dia.esperadoHora ? fmtTon(dia.esperadoHora) : '—'}</td><td>${cumplHtml}</td></tr>`;
+      const turnosHtml = dia.bloquesPorTurno.map(bt => {
+        const t = bt.turno;
+        _turnoCache[t.id] = t;
+        const rows = bt.bloques.map(b => {
+          const h = parseInt(b.key.slice(11, 13), 10);
+          const rango = `${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00`;
+          let cumplHtml = '<span class="faint">—</span>';
+          if (dia.rateMetaHora > 0) {
+            const cumpl = (b.toneladas / dia.rateMetaHora) * 100;
+            const cls = cumpl >= 100 ? 'badge-ok' : cumpl >= 70 ? 'badge-warn' : 'badge-bad';
+            cumplHtml = `<span class="badge ${cls}">${cumpl.toFixed(0)}%</span>`;
+          }
+          return `<tr><td>${rango}</td><td class="mono">${b.count}</td><td class="mono">${fmtTon(b.toneladas)}</td><td class="mono faint">${dia.rateMetaHora ? fmtTon(dia.rateMetaHora) : '—'}</td><td>${cumplHtml}</td></tr>`;
+        }).join('');
+        const cumplClass = bt.cumplimiento === null ? 'badge-muted' : bt.cumplimiento >= 100 ? 'badge-ok' : bt.cumplimiento >= 70 ? 'badge-warn' : 'badge-bad';
+        return `
+        <div class="cph-turno">
+          <div class="cph-turno-head">
+            <div>
+              <span class="cph-turno-n">Turno ${t.turno}</span>
+              <span class="faint" style="font-size:11.5px;"> · ${rangosTurno[t.turno] || ''} ${bt.bodegaNombres.length ? '· ' + bt.bodegaNombres.join(', ') : ''}</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+              ${soloLectura ? '' : `<button class="btn btn-ghost btn-xs" onclick="HTP.abrirModalEditarTurnoPorId('${t.id}','${buque ? buque.id : ''}')">✏️</button>`}
+            </div>
+          </div>
+          <div class="cph-turno-kpis">
+            <div><span class="l">Rate real</span><span class="v mono">${fmtRate(bt.rateReal)}</span></div>
+            <div><span class="l">Rate esperado</span><span class="v mono">${dia.rateMetaHora ? fmtRate(dia.rateMetaHora) : '—'}</span></div>
+            <div><span class="l">Horas</span><span class="v mono">${bt.horas.toFixed(1)}</span></div>
+            <div><span class="l">Cumpl.</span><span class="badge ${cumplClass}">${bt.cumplimiento === null ? '—' : bt.cumplimiento.toFixed(0) + '%'}</span></div>
+          </div>
+          ${rows ? `<table class="cph-table"><thead><tr><th>Hora</th><th>Camiones</th><th>Ton</th><th>Esperado</th><th>Cumpl.</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="muted" style="font-size:12px; padding:6px 0;">Sin viajes con hora registrada</p>'}
+        </div>`;
       }).join('');
       return `
       <div class="cph-dia">
         <div class="cph-dia-head">
           <span class="cph-fecha">${fechaFmt}</span>
-          <span class="cph-total mono">${dia.totalCamiones} camiones · ${fmtTon(dia.totalToneladas)} MT ${rateDia ? `· meta día ${fmtTon(rateDia)} MT` : ''}</span>
+          <span class="cph-total mono">${dia.totalCamiones} camiones · ${fmtTon(dia.totalToneladas)} MT</span>
         </div>
-        <table class="cph-table">
-          <thead><tr><th>Hora</th><th>Camiones</th><th>Ton</th><th>Esperado</th><th>Cumpl.</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        ${turnosHtml}
       </div>`;
     }).join('');
   }
@@ -508,6 +596,17 @@ const HTP = (() => {
       : `<span class="badge badge-bad">-${h} h atraso</span>`;
   }
 
+  // Un buque no puede estar "operando" si todavía no atraca — antes de eso
+  // no hay rate, atraso ni ETC que tengan sentido.
+  function estaAtracado(buque) {
+    return !!(buque && buque.atraque && buque.atraque.fecha);
+  }
+  function badgeEstadoBuque(buque) {
+    if (buque.estado === 'gira') return '<span class="badge badge-warn">En gira</span>';
+    if (!estaAtracado(buque)) return '<span class="badge badge-muted">⏳ Sin atracar</span>';
+    return '<span class="badge badge-ok">Operando</span>';
+  }
+
   function calcularTiempos(buque, detenciones) {
     const inicio = buque.fechaInicioReal ? new Date(buque.fechaInicioReal) : null;
     if (!inicio) return { minutosBruto: 0, minutosDetenido: 0, minutosDetenidoInfo: 0, minutosNeto: 0, horasBruto: 0, horasNeto: 0 };
@@ -540,10 +639,10 @@ const HTP = (() => {
 
   // Si un turno no tiene horas efectivas cargadas manualmente, se asumen las
   // 8 horas del turno — salvo que el primer registro real sea más tarde que
-  // el inicio nominal del turno, en cuyo caso el turno "partió" a esa hora
-  // (ej: buque atracó a medio turno). Si el turno sigue abierto, se cuenta
-  // hasta ahora en vez de hasta el fin nominal.
-  function horasDefaultTurno(t) {
+  // el inicio nominal del turno (partió atrasado), y se descuentan las
+  // detenciones que afecten rate y se solapen con la ventana del turno.
+  // Si el turno sigue abierto, se cuenta hasta ahora en vez de hasta el fin nominal.
+  function horasDefaultTurno(t, detenciones) {
     if (t.horasEfectivas !== null && t.horasEfectivas !== undefined && t.horasEfectivas !== '') return Number(t.horasEfectivas);
     const inicios = { 1: '00:00', 2: '08:00', 3: '16:00' };
     const nominalInicio = new Date(t.fecha + 'T' + (inicios[t.turno] || '00:00') + ':00');
@@ -552,17 +651,28 @@ const HTP = (() => {
     const primerTs = tsRegistros[0];
     const inicioEfectivo = (primerTs && primerTs > nominalInicio) ? primerTs : nominalInicio;
     const fin = t.estado === 'abierto' ? new Date() : nominalFin;
-    return Math.max(0, Math.min((fin - inicioEfectivo) / 3600000, 8));
+    let horas = Math.max(0, Math.min((fin - inicioEfectivo) / 3600000, 8));
+    if (detenciones && detenciones.length) {
+      const minutos = detenciones.filter(d => d.afectaRate).reduce((s, d) => {
+        const di = new Date(d.horaInicio);
+        const df = d.horaTermino ? new Date(d.horaTermino) : fin;
+        const solapIni = di > inicioEfectivo ? di : inicioEfectivo;
+        const solapFin = df < fin ? df : fin;
+        return s + Math.max(0, (solapFin - solapIni) / 60000);
+      }, 0);
+      horas = Math.max(0, horas - minutos / 60);
+    }
+    return horas;
   }
 
   // Rendimiento "real" del puerto: suma de toneladas y horas efectivas por turno
   // (igual metodología que la planilla de rendimiento bruto/neto en papel).
   // Incluye turnos abiertos (en curso) para que el rendimiento se vea al momento,
-  // no solo una vez cerrado y aprobado el turno.
-  function calcularRendimientoPorTurnos(buque, turnos) {
+  // no solo una vez cerrado y aprobado el turno. `detenciones` es opcional.
+  function calcularRendimientoPorTurnos(buque, turnos, detenciones) {
     const validos = (turnos || []).filter(t => t.estado === 'aprobado' || t.estado === 'pendiente' || t.estado === 'abierto');
     const ton = validos.reduce((s, t) => s + (Number(t.totalToneladas) || 0), 0);
-    const horas = validos.reduce((s, t) => s + horasDefaultTurno(t), 0);
+    const horas = validos.reduce((s, t) => s + horasDefaultTurno(t, detenciones), 0);
     const rate = horas > 0 ? ton / horas : 0;
     const productividad = buque && buque.rateMeta > 0 ? (rate / buque.rateMeta) * 100 : 0;
     return { ton, horas, rate, productividad, turnos: validos.length };
@@ -662,10 +772,10 @@ const HTP = (() => {
     BODEGAS_BASE, bodegasIniciales, bodegasOrdenadas, nuevaBodega,
     listenBuques, listenBuque, crearBuque, actualizarBuque, ajustarBodega, setBodegaAbsoluto,
     cerrarBuque, reabrirBuque, pausarGira, reanudarDeGira, eliminarBuque,
-    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, editarRegistro, horaDuplicada, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico,
+    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, editarRegistro, horaDuplicada, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico, eliminarTurnoCompleto, abrirModalEditarTurnoPorId, guardarEdicionTurno, confirmarEliminarTurno,
     listenCamiones, guardarCamion, eliminarCamion,
-    listenDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
-    totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, camionesPorHora, camionesPorDia, tablaCamionesPorHoraHTML,
+    listenDetenciones, listenTodasDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
+    totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML,
     fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, hoyISO, turnoActualNum, wireHorasRapidas,
     toast, openModal, closeModal, confirmar
   };
