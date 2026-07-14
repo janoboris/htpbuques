@@ -288,6 +288,10 @@ table.cph-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.cph-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); padding: 5px 6px; }
 table.cph-table td { padding: 6px; border-top: 1px solid var(--border-soft); color: var(--ink); }
 table.cph-table td:first-child, table.cph-table th:first-child { color: var(--ink-bright); font-weight: 600; }
+.cph-row-alerta td { background: rgba(226,73,92,0.1); color: var(--bad) !important; }
+table.cph-totales { margin-top: 10px; border-top: 2px solid var(--border-strong); padding-top: 4px; }
+table.cph-totales thead tr:first-child th { color: var(--ink-bright); font-size: 11px; text-transform: none; letter-spacing: 0; padding-top: 8px; }
+.cph-total-row td { font-weight: 700; color: var(--ink-bright) !important; border-top: 1px solid var(--border-strong); }
 
 /* ---------- Encabezado de rendimiento (más prominente) ---------- */
 .hero-kpis { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }

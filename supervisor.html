@@ -774,6 +774,12 @@ const Sup = {
     if (!mtTurnoId) { HTP.toast('Abre un turno primero', 'bad'); return; }
     if (!mtCamionSel) { HTP.toast('Selecciona un camión', 'bad'); return; }
     if (!mtBodegaSel) { HTP.toast('Selecciona una bodega', 'bad'); return; }
+    const horaVal = document.getElementById('mtHora').value;
+    if (!horaVal) { HTP.toast('Ingresa la hora de despacho', 'bad'); return; }
+    if (HTP.horaFueraDeTurno(mtTurno.turno, horaVal)) {
+      HTP.toast(`⛔ Esa hora no corresponde al Turno ${mtTurno.turno} (${HTP.rangoTurnoTexto(mtTurno.turno)})`, 'bad');
+      return;
+    }
     const b = BUQUES.find(x => x.id === mtBuqueId);
     const bod = b.bodegas[mtBodegaSel];
     const esAcero = b.tipoGranel === 'acero';
