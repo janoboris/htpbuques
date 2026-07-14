@@ -207,6 +207,31 @@ const HTP = (() => {
     return reg;
   }
 
+  // Corrección de un registro mal cargado: lo saca del turno y revierte lo que
+  // haya sumado a la bodega o a los contadores de cancha, para que el
+  // tonelaje quede exacto otra vez.
+  async function eliminarRegistro(turnoId, registro, buqueId) {
+    const patch = { registros: firebase.firestore.FieldValue.arrayRemove(registro) };
+    if (registro.tipo === 'camion_cancha') {
+      patch.viajesCancha = firebase.firestore.FieldValue.increment(-1);
+      patch.toneladasCancha = firebase.firestore.FieldValue.increment(-(Number(registro.toneladas) || 0));
+    } else {
+      patch.totalToneladas = firebase.firestore.FieldValue.increment(-(Number(registro.toneladas) || 0));
+      patch.viajes = firebase.firestore.FieldValue.increment(-1);
+    }
+    await col('turnos').doc(turnoId).update(patch);
+    if (registro.bodegaId && buqueId) {
+      await ajustarBodega(buqueId, registro.bodegaId, -(Number(registro.toneladas) || 0), null);
+    }
+  }
+
+  // Alarma simple: ¿ya existe un registro con exactamente la misma hora en
+  // este turno? (suele indicar que se registró dos veces por error).
+  function horaDuplicada(turno, horaISO) {
+    if (!turno || !turno.registros || !horaISO) return false;
+    return turno.registros.some(r => r.ts === horaISO);
+  }
+
   async function cerrarTurno(turnoId, observacion, horasEfectivas) {
     const patch = {
       estado: 'pendiente',
@@ -446,11 +471,11 @@ const HTP = (() => {
   function fmtFechaHora(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
-    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
   function fmtHora(iso) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
   function hoyISO() { return new Date().toISOString().slice(0, 10); }
 
@@ -526,7 +551,7 @@ const HTP = (() => {
     BODEGAS_BASE, bodegasIniciales, nuevaBodega,
     listenBuques, listenBuque, crearBuque, actualizarBuque, ajustarBodega, setBodegaAbsoluto,
     cerrarBuque, reabrirBuque, pausarGira, reanudarDeGira, eliminarBuque,
-    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico,
+    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, horaDuplicada, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico,
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
     totalToneladas, sumarAcero, avanceBodega, estadoBodega, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, camionesPorHora,

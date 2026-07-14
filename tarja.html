@@ -447,13 +447,23 @@ const Tarja = {
     cont.innerHTML = regs.map(r => `
       <div class="row-item">
         <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${HTP.fmtHora(r.ts)}</div></div>
-        <div class="side mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</div>
+        <div class="side" style="display:flex; align-items:center; gap:10px;">
+          <span class="mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</span>
+          <button class="btn btn-ghost btn-xs" onclick="Tarja.eliminarRegistro('${r.id}')" title="Corregir / eliminar">🗑</button>
+        </div>
       </div>`).join('');
+  },
+  async eliminarRegistro(regId) {
+    const reg = (turnoActual.registros || []).find(r => r.id === regId);
+    if (!reg) return;
+    if (!HTP.confirmar(`¿Eliminar este registro (${reg.camion || 'sin camión'} · ${HTP.fmtTon(reg.toneladas)} MT)? Se descuenta de la bodega/cancha.`)) return;
+    await HTP.eliminarRegistro(turnoActual.id, reg, buqueActual.id);
+    HTP.toast('Registro eliminado', 'ok');
   },
   renderCamionesPorHora() {
     const cont = document.getElementById('camionesPorHora');
     if (!cont) return;
-    const bloques = HTP.camionesPorHora([turnoActual]);
+    const bloques = HTP.camionesPorHora([turnoActual]).slice().reverse();
     if (!bloques.length) { cont.innerHTML = '<p class="muted" style="font-size:12.5px;">Aún sin viajes en este turno</p>'; return; }
     const max = Math.max(...bloques.map(b => b.count));
     cont.innerHTML = bloques.map(b => `
@@ -487,16 +497,17 @@ const Tarja = {
       if (pctVal === '') { HTP.toast('Ingresa el % restante de la bodega', 'bad'); return; }
       pct = Number(pctVal);
     }
+    const ts = Tarja.horaInputAISO('horaGranelInput');
+    if (HTP.horaDuplicada(turnoActual, ts) && !HTP.confirmar('⚠️ Ya existe un registro a esta hora en el turno. ¿Registrar de todas formas?')) return;
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'granel', camion: camionSeleccionado, bodegaId: bodegaSeleccionada,
-      toneladas: ton, pctRestante: pct,
-      ts: Tarja.horaInputAISO('horaGranelInput'),
+      toneladas: ton, pctRestante: pct, ts,
       detalle: `${bod.nombre} (${bod.tipo})`
     });
     await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, ton, pct);
-    document.getElementById('tonGranelInput').value = '';
     document.getElementById('horaGranelInput').value = '';
-    if (document.getElementById('pctRestanteInput')) document.getElementById('pctRestanteInput').value = '';
+    camionSeleccionado = null;
+    Tarja.renderCamionPicks();
     Tarja.setHoraAhora();
     HTP.toast('Viaje registrado', 'ok');
   },
@@ -506,13 +517,15 @@ const Tarja = {
     if (!camionSeleccionado) { HTP.toast('Selecciona un camión', 'bad'); return; }
     const ton = Number(document.getElementById('tonCanchaInput').value);
     if (!ton || ton <= 0) { HTP.toast('Ingresa las toneladas del camión', 'bad'); return; }
+    const ts = Tarja.horaInputAISO('horaCanchaInput');
+    if (HTP.horaDuplicada(turnoActual, ts) && !HTP.confirmar('⚠️ Ya existe un registro a esta hora en el turno. ¿Registrar de todas formas?')) return;
     await HTP.agregarRegistroCancha(turnoActual.id, {
-      camion: camionSeleccionado, toneladas: ton,
-      ts: Tarja.horaInputAISO('horaCanchaInput'),
+      camion: camionSeleccionado, toneladas: ton, ts,
       detalle: `Cancha (acopio)`
     });
-    document.getElementById('tonCanchaInput').value = buqueActual.promedioTonCamion || 30;
     document.getElementById('horaCanchaInput').value = '';
+    camionSeleccionado = null;
+    Tarja.renderCamionPicks();
     Tarja.setHoraAhora();
     HTP.toast('Camión a cancha registrado', 'ok');
   },
@@ -522,13 +535,14 @@ const Tarja = {
     const ton = Number(document.getElementById('tonGruaInput').value);
     if (!ton || ton <= 0) { HTP.toast('Ingresa las toneladas cargadas', 'bad'); return; }
     const bod = buqueActual.bodegas[bodegaSeleccionada];
+    const ts = Tarja.horaInputAISO('horaGruaInput');
+    if (HTP.horaDuplicada(turnoActual, ts) && !HTP.confirmar('⚠️ Ya existe un registro a esta hora en el turno. ¿Registrar de todas formas?')) return;
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'grua_bodega', bodegaId: bodegaSeleccionada, toneladas: ton,
-      grua: gruaSel, ts: Tarja.horaInputAISO('horaGruaInput'),
+      grua: gruaSel, ts,
       detalle: `${bod.nombre} · grúa${gruaSel ? ' (' + gruaSel + ')' : ''}`
     });
     await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, ton, null);
-    document.getElementById('tonGruaInput').value = '';
     document.getElementById('horaGruaInput').value = '';
     Tarja.setHoraAhora();
     HTP.toast('Carga a bodega registrada', 'ok');
@@ -558,17 +572,18 @@ const Tarja = {
     const total = bultos * peso;
     if (!bultos || !peso || total <= 0) { HTP.toast('Completa bultos y peso unitario', 'bad'); return; }
     const bod = buqueActual.bodegas[bodegaSeleccionada];
+    const ts = Tarja.horaInputAISO('horaAceroInput');
+    if (HTP.horaDuplicada(turnoActual, ts) && !HTP.confirmar('⚠️ Ya existe un registro a esta hora en el turno. ¿Registrar de todas formas?')) return;
     await HTP.agregarRegistro(turnoActual.id, {
       tipo: 'acero', camion: camionSeleccionado, aceroTipo: tipoAceroSel, bultos, pesoUnitario: peso,
-      bodegaId: bodegaSeleccionada,
-      ts: Tarja.horaInputAISO('horaAceroInput'),
+      bodegaId: bodegaSeleccionada, ts,
       toneladas: total, detalle: `${bod.nombre} · ${bultos} × ${tipoAceroSel}`
     });
     await HTP.ajustarBodega(buqueActual.id, bodegaSeleccionada, total, null);
-    document.getElementById('aceroBultos').value = '';
     document.getElementById('horaAceroInput').value = '';
+    camionSeleccionado = null;
+    Tarja.renderCamionPicks();
     Tarja.setHoraAhora();
-    Tarja.calcularAcero();
     HTP.toast('Carga registrada', 'ok');
   },
 

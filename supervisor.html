@@ -363,7 +363,7 @@ const Sup = {
   },
 
   camionesPorHoraHTML(turnosBuque) {
-    const bloques = HTP.camionesPorHora(turnosBuque);
+    const bloques = HTP.camionesPorHora(turnosBuque).slice().reverse();
     if (!bloques.length) return '<p class="muted" style="font-size:12.5px; padding-bottom:10px;">Sin registros con hora (los turnos históricos cargados en bloque no traen detalle por camión)</p>';
     const max = Math.max(...bloques.map(b => b.count));
     return `<div style="margin-bottom:14px;">` + bloques.map(b => `
@@ -620,9 +620,19 @@ const Sup = {
     cont.innerHTML = regs.length ? regs.map(r => `
       <div class="row-item">
         <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${HTP.fmtHora(r.ts)}</div></div>
-        <div class="side mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</div>
+        <div class="side" style="display:flex; align-items:center; gap:10px;">
+          <span class="mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</span>
+          <button class="btn btn-ghost btn-xs" onclick="Sup.mtEliminarRegistro('${r.id}')" title="Corregir / eliminar">🗑</button>
+        </div>
       </div>`).join('') : '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>';
     Sup.mtRenderBodegaPick();
+  },
+  async mtEliminarRegistro(regId) {
+    const reg = (mtTurno.registros || []).find(r => r.id === regId);
+    if (!reg) return;
+    if (!HTP.confirmar(`¿Eliminar este registro (${reg.camion || 'sin camión'} · ${HTP.fmtTon(reg.toneladas)} MT)? Se descuenta de la bodega.`)) return;
+    await HTP.eliminarRegistro(mtTurnoId, reg, mtBuqueId);
+    HTP.toast('Registro eliminado', 'ok');
   },
   mtNecesitaTara() {
     const b = BUQUES.find(x => x.id === mtBuqueId);
@@ -676,7 +686,8 @@ const Sup = {
     document.getElementById('mtTonCard').classList.toggle('hidden', esAcero);
     if (esAcero) {
       const cfg = b.acero || { rolloPeso: 12.5, barraPeso: 0.045 };
-      if (!document.getElementById('mtPesoUnit').value) document.getElementById('mtPesoUnit').value = cfg.rolloPeso;
+      const pesos = { rollos: cfg.rolloPeso, barras: cfg.barraPeso, otro: '' };
+      if (!document.getElementById('mtPesoUnit').value) document.getElementById('mtPesoUnit').value = pesos[mtTipoAcero] ?? cfg.rolloPeso;
     }
     const activas = Object.values(b.bodegas || {}).filter(x => x.activa);
     document.getElementById('mtBodegaPick').innerHTML = activas.map(bod => `
@@ -732,6 +743,7 @@ const Sup = {
       const pctVal = document.getElementById('mtPctInput').value;
       if (pctVal !== '') pct = Number(pctVal);
     }
+    if (HTP.horaDuplicada(mtTurno, ts) && !HTP.confirmar('⚠️ Ya existe un registro a esta hora en el turno. ¿Registrar de todas formas?')) return;
     await HTP.agregarRegistro(mtTurnoId, { camion: mtCamionSel, bodegaId: mtBodegaSel, toneladas: ton, pctRestante: pct, ts, ...extra });
     await HTP.ajustarBodega(mtBuqueId, mtBodegaSel, ton, pct);
     document.getElementById('mtHora').value = '';
