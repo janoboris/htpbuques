@@ -344,6 +344,19 @@ const HTP = (() => {
     await col('turnos').doc(turnoId).delete();
   }
 
+  // Botón "✏️ Abrir turno" del resumen: si la pantalla registró un manejador
+  // (Supervisor lo hace, para llevarte a Tarja manual con ese turno ya
+  // abierto y todas sus tarjas listas para corregir), se usa ese. Si no hay
+  // manejador registrado (ej. Gerencia, aunque ahí el botón no se muestra),
+  // cae de respaldo al modal simple de horas/observación.
+  function editarTurnoUI(fecha, turnoNum, buqueId, turnoId) {
+    if (typeof window.HTP_onEditarTurno === 'function') {
+      window.HTP_onEditarTurno(fecha, turnoNum, buqueId, turnoId || null);
+      return;
+    }
+    if (turnoId) abrirModalEditarTurnoPorId(turnoId, buqueId);
+  }
+
   // Modal autocontenido para editar (horas efectivas / observación) o
   // eliminar un turno completo, usable desde cualquier pantalla (Supervisor,
   // Gerencia) sin tener que reimplementar el modal en cada una.
@@ -482,34 +495,50 @@ const HTP = (() => {
     });
     const rateMetaHora = buque && buque.rateMeta > 0 ? buque.rateMeta / 24 : 0;
     return Object.keys(porDia).sort().reverse().map(fecha => {
-      const turnosDia = [1, 2, 3].map(n => porDia[fecha][n]).filter(Boolean);
-      const bloquesPorTurno = turnosDia.map(t => {
+      const docsDia = [1, 2, 3].map(n => porDia[fecha][n]).filter(Boolean);
+      // Junta TODOS los registros del día (sin importar en qué turno quedaron
+      // guardados) y los reordena según la hora real de cada uno — así una
+      // hora mal tipeada en el turno equivocado igual aparece en su turno real.
+      const registrosDia = [];
+      docsDia.forEach(t => (t.registros || []).forEach(r => registrosDia.push({ ...r, _turnoOrigen: t.turno })));
+      const porTurnoReal = { 1: [], 2: [], 3: [] };
+      registrosDia.forEach(r => {
+        if (!r.ts) { porTurnoReal[r._turnoOrigen] && porTurnoReal[r._turnoOrigen].push(r); return; }
+        const h = parseInt(r.ts.slice(11, 13), 10);
+        const n = h < 8 ? 1 : h < 16 ? 2 : 3;
+        porTurnoReal[n].push(r);
+      });
+      const bloquesPorTurno = [1, 2, 3].filter(n => porTurnoReal[n].length || docsDia.some(t => t.turno === n)).map(n => {
+        const regsTodos = porTurnoReal[n];
+        const regs = regsTodos.filter(r => r.tipo !== 'camion_cancha'); // cancha no cuenta como carga embarcada
+        const tDoc = docsDia.find(t => t.turno === n) || null;
         const buckets = {};
-        (t.registros || []).forEach(r => {
+        regs.forEach(r => {
           if (!r.ts) return;
           const bodNombre = (r.bodegaId && buque && buque.bodegas && buque.bodegas[r.bodegaId]) ? buque.bodegas[r.bodegaId].nombre : (r.bodegaId || '—');
           const horaStr = r.ts.slice(11, 16);
           const key = r.ts.slice(0, 13) + '|' + (r.bodegaId || '');
-          if (!buckets[key]) buckets[key] = { key, hora: r.ts.slice(0, 13), bodega: bodNombre, count: 0, toneladas: 0, fueraDeTurno: horaFueraDeTurno(t.turno, horaStr) };
+          if (!buckets[key]) buckets[key] = { key, hora: r.ts.slice(0, 13), bodega: bodNombre, count: 0, toneladas: 0, reasignado: r._turnoOrigen !== n };
           buckets[key].count++;
           buckets[key].toneladas += Number(r.toneladas) || 0;
         });
         const bloques = Object.values(buckets).sort((a, b) => a.key.localeCompare(b.key));
-        const horas = horasDefaultTurno(t, detenciones);
-        const ton = Number(t.totalToneladas) || 0;
+        const horas = tDoc ? horasDefaultTurno(tDoc, detenciones) : 8;
+        const ton = regs.reduce((s, r) => s + (Number(r.toneladas) || 0), 0);
+        const viajes = regs.length;
         const rateReal = horas > 0 ? ton / horas : 0;
         const cumplimiento = rateMetaHora > 0 ? (rateReal / rateMetaHora) * 100 : null;
-        const totBodegas = totalesPorBodega(t.registros, buque);
+        const totBodegas = totalesPorBodega(regs, buque);
         const bodegaNombres = totBodegas.map(x => x.nombre);
-        return { turno: t, bloques, horas, ton, rateReal, cumplimiento, bodegaNombres, totBodegas, viajes: Number(t.viajes) || 0 };
+        const huboReasignados = bloques.some(b => b.reasignado);
+        return { turno: { turno: n, fecha, estado: tDoc ? tDoc.estado : 'abierto', id: tDoc ? tDoc.id : null, horasEfectivas: tDoc ? tDoc.horasEfectivas : null, observacionCierre: tDoc ? tDoc.observacionCierre : '', totalToneladas: ton, viajes }, bloques, horas, ton, rateReal, cumplimiento, bodegaNombres, totBodegas, viajes, huboReasignados };
       });
-      const totalCamiones = turnosDia.reduce((s, t) => s + (Number(t.viajes) || 0), 0);
-      const totalToneladas = turnosDia.reduce((s, t) => s + (Number(t.totalToneladas) || 0), 0);
-      const totalHoras = turnosDia.reduce((s, t) => s + horasDefaultTurno(t, detenciones), 0);
+      const totalCamiones = bloquesPorTurno.reduce((s, bt) => s + bt.viajes, 0);
+      const totalToneladas = bloquesPorTurno.reduce((s, bt) => s + bt.ton, 0);
+      const totalHoras = bloquesPorTurno.reduce((s, bt) => s + bt.horas, 0);
       const rateRealDia = totalHoras > 0 ? totalToneladas / totalHoras : 0;
-      const registrosDia = [];
-      turnosDia.forEach(t => (t.registros || []).forEach(r => registrosDia.push(r)));
-      const totBodegasDia = totalesPorBodega(registrosDia, buque);
+      const registrosValidos = registrosDia.filter(r => r.tipo !== 'camion_cancha');
+      const totBodegasDia = totalesPorBodega(registrosValidos, buque);
       return { fecha, bloquesPorTurno, totalCamiones, totalToneladas, totalHoras, rateRealDia, rateMetaHora, totBodegasDia };
     });
   }
@@ -530,10 +559,9 @@ const HTP = (() => {
     const rangosTurno = { 1: '00:00–08:00', 2: '08:00–16:00', 3: '16:00–00:00' };
     return dias.map(dia => {
       const fechaFmt = new Date(dia.fecha + 'T00:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: '2-digit', month: 'long' });
-      const cumplDiaClass = !dia.rateMetaHora ? 'badge-muted' : (dia.rateRealDia / (dia.rateMetaHora * 24) * 100) >= 100 ? 'badge-ok' : (dia.rateRealDia / (dia.rateMetaHora * 24) * 100) >= 70 ? 'badge-warn' : 'badge-bad';
+      const cumplDiaPct = dia.rateMetaHora ? (dia.rateRealDia / dia.rateMetaHora * 100) : null;
+      const cumplDiaClass = cumplDiaPct === null ? 'badge-muted' : cumplDiaPct >= 100 ? 'badge-ok' : cumplDiaPct >= 70 ? 'badge-warn' : 'badge-bad';
       const turnosHtml = dia.bloquesPorTurno.map(bt => {
-        const t = bt.turno;
-        _turnoCache[t.id] = t;
         const rows = bt.bloques.map(b => {
           const h = parseInt(b.hora.slice(11, 13), 10);
           const rango = `${String(h).padStart(2, '0')}:00–${String((h + 1) % 24).padStart(2, '0')}:00`;
@@ -543,22 +571,21 @@ const HTP = (() => {
             const cls = cumpl >= 100 ? 'badge-ok' : cumpl >= 70 ? 'badge-warn' : 'badge-bad';
             cumplHtml = `<span class="badge ${cls}">${cumpl.toFixed(0)}%</span>`;
           }
-          const alerta = b.fueraDeTurno ? ' ⚠️' : '';
-          const trClass = b.fueraDeTurno ? ' class="cph-row-alerta"' : '';
-          return `<tr${trClass}><td>${rango}${alerta}</td><td>${b.bodega}</td><td class="mono">${b.count}</td><td class="mono">${fmtTon(b.toneladas)}</td><td class="mono faint">${dia.rateMetaHora ? fmtTon(dia.rateMetaHora) : '—'}</td><td>${cumplHtml}</td></tr>`;
+          const alerta = b.reasignado ? ' <span title="Este viaje se guardó en otro turno, se muestra aquí por su hora real">↺</span>' : '';
+          return `<tr><td>${rango}${alerta}</td><td>${b.bodega}</td><td class="mono">${b.count}</td><td class="mono">${fmtTon(b.toneladas)}</td><td class="mono faint">${dia.rateMetaHora ? fmtTon(dia.rateMetaHora) : '—'}</td><td>${cumplHtml}</td></tr>`;
         }).join('');
         const cumplClass = bt.cumplimiento === null ? 'badge-muted' : bt.cumplimiento >= 100 ? 'badge-ok' : bt.cumplimiento >= 70 ? 'badge-warn' : 'badge-bad';
-        const hayAlertas = bt.bloques.some(b => b.fueraDeTurno);
+        const n = bt.turno.turno;
         return `
         <div class="cph-turno">
           <div class="cph-turno-head">
             <div>
-              <span class="cph-turno-n">Turno ${t.turno}</span>
-              <span class="faint" style="font-size:11.5px;"> · ${rangosTurno[t.turno] || ''} ${bt.bodegaNombres.length ? '· ' + bt.bodegaNombres.join(', ') : ''}</span>
-              ${hayAlertas ? '<span class="badge badge-bad" style="margin-left:6px;">⚠️ horas fuera de turno</span>' : ''}
+              <span class="cph-turno-n">Turno ${n}</span>
+              <span class="faint" style="font-size:11.5px;"> · ${rangosTurno[n] || ''} ${bt.bodegaNombres.length ? '· ' + bt.bodegaNombres.join(', ') : ''}</span>
+              ${bt.huboReasignados ? '<span class="badge badge-warn" style="margin-left:6px;" title="Algún viaje quedó guardado en otro turno; aquí se muestra ordenado por su hora real">↺ reordenado</span>' : ''}
             </div>
             <div style="display:flex; gap:6px;">
-              ${soloLectura ? '' : `<button class="btn btn-ghost btn-xs" onclick="HTP.abrirModalEditarTurnoPorId('${t.id}','${buque ? buque.id : ''}')">✏️</button>`}
+              ${soloLectura ? '' : `<button class="btn btn-ghost btn-xs" onclick="HTP.editarTurnoUI('${dia.fecha}',${n},'${buque ? buque.id : ''}','${bt.turno.id || ''}')">✏️ Abrir turno</button>`}
             </div>
           </div>
           <div class="cph-turno-kpis">
@@ -577,16 +604,19 @@ const HTP = (() => {
           <span class="cph-fecha">${fechaFmt}</span>
           <span class="cph-total mono">${dia.totalCamiones} camiones · ${fmtTon(dia.totalToneladas)} MT</span>
         </div>
-        <table class="cph-table" style="margin-bottom:12px;">
-          <thead><tr><th>Rate real día (MT/h)</th><th>Rate esperado día (MT/h)</th><th>Horas día</th><th>Cumpl. día</th></tr></thead>
-          <tbody><tr>
-            <td class="mono">${fmtRate(dia.rateRealDia)}</td>
-            <td class="mono faint">${dia.rateMetaHora ? fmtRate(dia.rateMetaHora) : '—'}</td>
-            <td class="mono">${dia.totalHoras.toFixed(1)}</td>
-            <td><span class="badge ${cumplDiaClass}">${dia.rateMetaHora ? (dia.rateRealDia / dia.rateMetaHora * 100).toFixed(0) + '%' : '—'}</span></td>
-          </tr></tbody>
-        </table>
-        ${tablaTotalesBodegaHTML(dia.totBodegasDia, dia.totalCamiones, dia.totalToneladas, 'Totales del día por bodega')}
+        <div class="cph-resumen-dia">
+          <div class="cph-mini-title">Resumen del día</div>
+          <table class="cph-table">
+            <thead><tr><th>Rate real día (MT/h)</th><th>Rate esperado día (MT/h)</th><th>Horas día</th><th>Cumpl. día</th></tr></thead>
+            <tbody><tr>
+              <td class="mono">${fmtRate(dia.rateRealDia)}</td>
+              <td class="mono faint">${dia.rateMetaHora ? fmtRate(dia.rateMetaHora) : '—'}</td>
+              <td class="mono">${dia.totalHoras.toFixed(1)}</td>
+              <td><span class="badge ${cumplDiaClass}">${cumplDiaPct === null ? '—' : cumplDiaPct.toFixed(0) + '%'}</span></td>
+            </tr></tbody>
+          </table>
+          ${tablaTotalesBodegaHTML(dia.totBodegasDia, dia.totalCamiones, dia.totalToneladas, 'Totales del día por bodega')}
+        </div>
         ${turnosHtml}
       </div>`;
     }).join('');
@@ -833,7 +863,7 @@ const HTP = (() => {
     BODEGAS_BASE, bodegasIniciales, bodegasOrdenadas, nuevaBodega,
     listenBuques, listenBuque, crearBuque, actualizarBuque, ajustarBodega, setBodegaAbsoluto,
     cerrarBuque, reabrirBuque, pausarGira, reanudarDeGira, eliminarBuque,
-    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, editarRegistro, horaDuplicada, horaFueraDeTurno, rangoTurnoTexto, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico, eliminarTurnoCompleto, abrirModalEditarTurnoPorId, guardarEdicionTurno, confirmarEliminarTurno,
+    turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, editarRegistro, horaDuplicada, horaFueraDeTurno, rangoTurnoTexto, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico, eliminarTurnoCompleto, editarTurnoUI, abrirModalEditarTurnoPorId, guardarEdicionTurno, confirmarEliminarTurno,
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, listenTodasDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
     totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML,

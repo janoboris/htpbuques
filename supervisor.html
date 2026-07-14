@@ -249,6 +249,15 @@
 <script>
 HTP.init();
 HTP.wireHorasRapidas(['mtHora']);
+
+window.HTP_onEditarTurno = function (fecha, turnoNum, buqueId, turnoId) {
+  document.querySelector('.tab-btn[data-tab="tarjamanual"]').click();
+  document.getElementById('mtBuque').value = buqueId;
+  document.getElementById('mtFecha').value = fecha;
+  document.getElementById('mtTurno').value = String(turnoNum);
+  Sup.mtAbrirTurno();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 const usuario = HTP.getUsuario();
 if (!usuario || usuario.perfil !== 'supervisor') location.href = 'index.html';
 document.getElementById('nombreUsuario').textContent = usuario ? usuario.nombre : '';
