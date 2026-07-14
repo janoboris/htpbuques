@@ -337,7 +337,7 @@ const Sup = {
             <div><div class="l">Desatraque</div><div class="v">${de.fecha ? HTP.fmtFechaHora(de.fecha) : '—'} ${de.practico ? '· ' + de.practico : ''}</div></div>
           </div>
           <div class="bodega-grid">
-            ${HTP.bodegasOrdenadas(b).filter(x => x.activa).reverse().map(bod => Sup.bodegaCardHTML(b.id, bod)).join('') || '<p class="muted">Sin bodegas activas</p>'}
+            ${HTP.bodegasOrdenadas(b).filter(x => x.activa).reverse().map(bod => Sup.bodegaCardHTML(b.id, bod, r.rate)).join('') || '<p class="muted">Sin bodegas activas</p>'}
           </div>
           <div class="divider"></div>
           <div class="card-title">Camiones por hora</div>
@@ -360,11 +360,12 @@ const Sup = {
     el.classList.toggle('hidden');
   },
 
-  bodegaCardHTML(buqueId, bod) {
+  bodegaCardHTML(buqueId, bod, rateGeneral) {
     const avance = HTP.avanceBodega(bod);
     const estado = HTP.estadoBodega(bod);
     const etiquetas = { pendiente: 'En espera', trabajando: bod.tipo === 'descarga' ? 'Descargando' : 'Cargando', rematada: 'Rematada', inactiva: 'Inactiva' };
     const saldo = Math.max(0, (Number(bod.tonObjetivo) || 0) - (Number(bod.tonAcumulado) || 0));
+    const proyB = HTP.calcularProyeccionBodega(bod, rateGeneral);
     return `
       <div class="bodega-panel st-${estado}">
         <div class="bp-head">
@@ -377,6 +378,7 @@ const Sup = {
           ${bod.tipo === 'descarga' && bod.pctRestante !== null && bod.pctRestante !== undefined ? ` · ${bod.pctRestante}% restante` : ''}
         </div>
         ${estado === 'rematada' ? `<div class="bp-remate">🏁 Rematada ${HTP.fmtFechaHora(bod.remate.fecha)}</div>` : ''}
+        ${!proyB.rematada && proyB.etc ? `<div class="bp-etc">⏱ ETC bodega: ${HTP.fmtFechaHora(proyB.etc)} (${proyB.horasRestantes.toFixed(1)} h al rate actual)</div>` : ''}
         <button class="btn btn-ghost btn-xs" style="margin-top:10px;" onclick="Sup.abrirModalAjuste('${buqueId}','${bod.id}')">Ajustar / editar bodega</button>
       </div>`;
   },
@@ -670,13 +672,28 @@ const Sup = {
     if (!reg) return;
     const d = new Date(reg.ts);
     const localVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const esAcero = reg.tipo === 'acero';
     HTP.openModal(`
       <div class="modal-head"><h3>Corregir registro</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
       <p class="muted" style="font-size:13px; margin-bottom:14px;">${reg.camion || 'sin camión'} · ${reg.detalle}</p>
       <div class="field"><label>Fecha y hora</label><input id="mterFechaHora" type="datetime-local" value="${localVal}"></div>
-      <div class="field"><label>Toneladas</label><input id="mterToneladas" class="mono" type="number" step="0.001" value="${reg.toneladas}"></div>
+      ${esAcero ? `
+        <div class="field-row">
+          <div class="field"><label>Bultos</label><input id="mterBultos" class="mono" type="number" value="${reg.bultos || ''}" oninput="Sup.mtRecalcularEdicionAcero()"></div>
+          <div class="field"><label>Peso unitario (MT)</label><input id="mterPesoUnit" class="mono" type="number" step="0.001" value="${reg.pesoUnitario || ''}" oninput="Sup.mtRecalcularEdicionAcero()"></div>
+        </div>
+        <div class="total-preview"><div class="v mono" id="mterToneladasPreview">${HTP.fmtTon(reg.toneladas)}</div><div class="l">Toneladas totales</div></div>
+        <input type="hidden" id="mterToneladas" value="${reg.toneladas}">
+      ` : `<div class="field"><label>Toneladas</label><input id="mterToneladas" class="mono" type="number" step="0.001" value="${reg.toneladas}"></div>`}
       <button class="btn btn-accent btn-block" onclick="Sup.mtGuardarEdicionRegistro('${regId}')">Guardar corrección</button>
     `);
+  },
+  mtRecalcularEdicionAcero() {
+    const b = Number(document.getElementById('mterBultos').value) || 0;
+    const p = Number(document.getElementById('mterPesoUnit').value) || 0;
+    const total = b * p;
+    document.getElementById('mterToneladasPreview').textContent = HTP.fmtTon(total);
+    document.getElementById('mterToneladas').value = total;
   },
   async mtGuardarEdicionRegistro(regId) {
     const reg = (mtTurno.registros || []).find(r => r.id === regId);
@@ -684,7 +701,10 @@ const Sup = {
     const fh = document.getElementById('mterFechaHora').value;
     const ton = Number(document.getElementById('mterToneladas').value);
     if (!fh || !ton || ton <= 0) { HTP.toast('Completa fecha/hora y toneladas', 'bad'); return; }
-    await HTP.editarRegistro(mtTurnoId, mtBuqueId, reg, { ts: new Date(fh).toISOString(), toneladas: ton });
+    const cambios = { ts: new Date(fh).toISOString(), toneladas: ton };
+    const bultosEl = document.getElementById('mterBultos');
+    if (bultosEl) { cambios.bultos = Number(bultosEl.value) || 0; cambios.pesoUnitario = Number(document.getElementById('mterPesoUnit').value) || 0; }
+    await HTP.editarRegistro(mtTurnoId, mtBuqueId, reg, cambios);
     HTP.closeModal();
     HTP.toast('Registro corregido', 'ok');
   },

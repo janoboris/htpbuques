@@ -696,6 +696,20 @@ const HTP = (() => {
     return { objetivo, restante, horasRestantes, etc, diferenciaHoras };
   }
 
+  // ETC de una bodega específica (para planificar cuándo conviene cambiar de
+  // bodega): usa el rate general que se está llevando en el buque como
+  // referencia — si sigue así de rápido, esta bodega se acaba en X horas.
+  function calcularProyeccionBodega(bodega, rateGeneralMTh) {
+    const objetivo = Number(bodega.tonObjetivo) || 0;
+    const acumulado = Number(bodega.tonAcumulado) || 0;
+    const restante = Math.max(0, objetivo - acumulado);
+    if (bodega.remate && bodega.remate.fecha) return { restante: 0, horasRestantes: 0, etc: null, rematada: true };
+    if (!rateGeneralMTh || rateGeneralMTh <= 0 || restante <= 0) return { restante, horasRestantes: restante > 0 ? null : 0, etc: null, rematada: false };
+    const horasRestantes = restante / rateGeneralMTh;
+    const etc = new Date(Date.now() + horasRestantes * 3600000).toISOString();
+    return { restante, horasRestantes, etc, rematada: false };
+  }
+
   function fmtProyeccionBadge(diferenciaHoras) {
     if (diferenciaHoras === null) return '';
     const h = Math.abs(diferenciaHoras).toFixed(1);
@@ -749,7 +763,10 @@ const HTP = (() => {
   // 8 horas del turno — salvo que el primer registro real sea más tarde que
   // el inicio nominal del turno (partió atrasado), y se descuentan las
   // detenciones que afecten rate y se solapen con la ventana del turno.
-  // Si el turno sigue abierto, se cuenta hasta ahora en vez de hasta el fin nominal.
+  // Mientras el turno sigue abierto, se cuenta hasta el ÚLTIMO REGISTRO real
+  // (no hasta "ahora"), para no inflar las horas con tiempo de espera del
+  // próximo camión — ej: si el último viaje fue a las 06:30, son 6.5h
+  // trabajadas, no las horas que hayan pasado desde entonces hasta ahora.
   function horasDefaultTurno(t, detenciones) {
     if (t.horasEfectivas !== null && t.horasEfectivas !== undefined && t.horasEfectivas !== '') return Number(t.horasEfectivas);
     const inicios = { 1: '00:00', 2: '08:00', 3: '16:00' };
@@ -757,8 +774,15 @@ const HTP = (() => {
     const nominalFin = new Date(nominalInicio.getTime() + 8 * 3600000);
     const tsRegistros = (t.registros || []).map(r => new Date(r.ts)).filter(d => !isNaN(d)).sort((a, b) => a - b);
     const primerTs = tsRegistros[0];
+    const ultimoTs = tsRegistros[tsRegistros.length - 1];
     const inicioEfectivo = (primerTs && primerTs > nominalInicio) ? primerTs : nominalInicio;
-    const fin = t.estado === 'abierto' ? new Date() : nominalFin;
+    let fin;
+    if (t.estado === 'abierto') {
+      if (!ultimoTs) return 0; // turno abierto sin ningún registro aún: nada que contar todavía
+      fin = ultimoTs > inicioEfectivo ? ultimoTs : inicioEfectivo;
+    } else {
+      fin = nominalFin;
+    }
     let horas = Math.max(0, Math.min((fin - inicioEfectivo) / 3600000, 8));
     if (detenciones && detenciones.length) {
       const minutos = detenciones.filter(d => d.afectaRate).reduce((s, d) => {
@@ -883,7 +907,7 @@ const HTP = (() => {
     turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, editarRegistro, horaDuplicada, horaFueraDeTurno, rangoTurnoTexto, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico, eliminarTurnoCompleto, editarTurnoUI, abrirModalEditarTurnoPorId, guardarEdicionTurno, confirmarEliminarTurno,
     listenCamiones, guardarCamion, eliminarCamion,
     listenDetenciones, listenTodasDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
-    totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML,
+    totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, calcularProyeccionBodega, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML,
     fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, fechaLocalCorta, hoyISO, turnoActualNum, wireHorasRapidas,
     toast, openModal, closeModal, confirmar
   };

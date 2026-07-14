@@ -292,11 +292,16 @@ const Tarja = {
 
   renderBodegaPick() {
     const activas = HTP.bodegasOrdenadas(buqueActual).filter(b => b.activa).reverse();
-    const html = activas.map(b => `
+    const rGeneral = HTP.calcularRendimientoPorTurnos(buqueActual, turnosDelBuque).rate;
+    const html = activas.map(b => {
+      const proyB = HTP.calcularProyeccionBodega(b, rGeneral);
+      const etcTxt = !proyB.rematada && proyB.etc ? ` · ETC ${HTP.fmtFechaHora(proyB.etc)}` : '';
+      return `
       <button type="button" class="${bodegaSeleccionada === b.id ? 'sel' : ''}" onclick="Tarja.elegirBodega('${b.id}')">
         <div class="n">${b.nombre}</div>
-        <div class="s">${b.tipo === 'descarga' ? 'Descarga' : 'Carga'} · ${HTP.fmtTon(b.tonAcumulado)}/${HTP.fmtTon(b.tonObjetivo)} MT</div>
-      </button>`).join('') || '<p class="muted">Sin bodegas activas</p>';
+        <div class="s">${b.tipo === 'descarga' ? 'Descarga' : 'Carga'} · ${HTP.fmtTon(b.tonAcumulado)}/${HTP.fmtTon(b.tonObjetivo)} MT${etcTxt}</div>
+      </button>`;
+    }).join('') || '<p class="muted">Sin bodegas activas</p>';
     ['bodegaPickGranel', 'bodegaPickAcero'].forEach(idc => {
       const cont = document.getElementById(idc);
       if (cont) cont.innerHTML = html;
@@ -459,13 +464,28 @@ const Tarja = {
     if (!reg) return;
     const d = new Date(reg.ts);
     const localVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const esAcero = reg.tipo === 'acero';
     HTP.openModal(`
       <div class="modal-head"><h3>Corregir registro</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
       <p class="muted" style="font-size:13px; margin-bottom:14px;">${reg.camion || 'sin camión'} · ${reg.detalle}</p>
       <div class="field"><label>Fecha y hora</label><input id="erFechaHora" type="datetime-local" value="${localVal}"></div>
-      <div class="field"><label>Toneladas</label><input id="erToneladas" class="mono" type="number" step="0.001" value="${reg.toneladas}"></div>
+      ${esAcero ? `
+        <div class="field-row">
+          <div class="field"><label>Bultos</label><input id="erBultos" class="mono" type="number" value="${reg.bultos || ''}" oninput="Tarja.recalcularEdicionAcero()"></div>
+          <div class="field"><label>Peso unitario (MT)</label><input id="erPesoUnit" class="mono" type="number" step="0.001" value="${reg.pesoUnitario || ''}" oninput="Tarja.recalcularEdicionAcero()"></div>
+        </div>
+        <div class="total-preview"><div class="v mono" id="erToneladasPreview">${HTP.fmtTon(reg.toneladas)}</div><div class="l">Toneladas totales</div></div>
+        <input type="hidden" id="erToneladas" value="${reg.toneladas}">
+      ` : `<div class="field"><label>Toneladas</label><input id="erToneladas" class="mono" type="number" step="0.001" value="${reg.toneladas}"></div>`}
       <button class="btn btn-accent btn-block" onclick="Tarja.guardarEdicionRegistro('${regId}')">Guardar corrección</button>
     `);
+  },
+  recalcularEdicionAcero() {
+    const b = Number(document.getElementById('erBultos').value) || 0;
+    const p = Number(document.getElementById('erPesoUnit').value) || 0;
+    const total = b * p;
+    document.getElementById('erToneladasPreview').textContent = HTP.fmtTon(total);
+    document.getElementById('erToneladas').value = total;
   },
   async guardarEdicionRegistro(regId) {
     const reg = (turnoActual.registros || []).find(r => r.id === regId);
@@ -473,7 +493,10 @@ const Tarja = {
     const fh = document.getElementById('erFechaHora').value;
     const ton = Number(document.getElementById('erToneladas').value);
     if (!fh || !ton || ton <= 0) { HTP.toast('Completa fecha/hora y toneladas', 'bad'); return; }
-    await HTP.editarRegistro(turnoActual.id, buqueActual.id, reg, { ts: new Date(fh).toISOString(), toneladas: ton });
+    const cambios = { ts: new Date(fh).toISOString(), toneladas: ton };
+    const bultosEl = document.getElementById('erBultos');
+    if (bultosEl) { cambios.bultos = Number(bultosEl.value) || 0; cambios.pesoUnitario = Number(document.getElementById('erPesoUnit').value) || 0; }
+    await HTP.editarRegistro(turnoActual.id, buqueActual.id, reg, cambios);
     HTP.closeModal();
     HTP.toast('Registro corregido', 'ok');
   },
