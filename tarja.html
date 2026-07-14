@@ -291,7 +291,7 @@ const Tarja = {
   },
 
   renderBodegaPick() {
-    const activas = Object.values(buqueActual.bodegas || {}).filter(b => b.activa);
+    const activas = HTP.bodegasOrdenadas(buqueActual).filter(b => b.activa);
     const html = activas.map(b => `
       <button type="button" class="${bodegaSeleccionada === b.id ? 'sel' : ''}" onclick="Tarja.elegirBodega('${b.id}')">
         <div class="n">${b.nombre}</div>
@@ -446,12 +446,36 @@ const Tarja = {
     if (!regs.length) { cont.innerHTML = '<p class="muted center" style="padding:14px 0;">Sin registros aún</p>'; return; }
     cont.innerHTML = regs.map(r => `
       <div class="row-item">
-        <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${HTP.fmtHora(r.ts)}</div></div>
-        <div class="side" style="display:flex; align-items:center; gap:10px;">
+        <div class="main"><div class="t">${r.camion || '—'} · ${r.detalle}</div><div class="s">${r.ts ? r.ts.slice(0,10) : ''} ${HTP.fmtHora(r.ts)}</div></div>
+        <div class="side" style="display:flex; align-items:center; gap:8px;">
           <span class="mono" style="color:var(--ink-bright); font-weight:700;">${HTP.fmtTon(r.toneladas)} MT</span>
-          <button class="btn btn-ghost btn-xs" onclick="Tarja.eliminarRegistro('${r.id}')" title="Corregir / eliminar">🗑</button>
+          <button class="btn btn-ghost btn-xs" onclick="Tarja.abrirEditarRegistro('${r.id}')" title="Corregir">✏️</button>
+          <button class="btn btn-ghost btn-xs" onclick="Tarja.eliminarRegistro('${r.id}')" title="Eliminar">🗑</button>
         </div>
       </div>`).join('');
+  },
+  abrirEditarRegistro(regId) {
+    const reg = (turnoActual.registros || []).find(r => r.id === regId);
+    if (!reg) return;
+    const d = new Date(reg.ts);
+    const localVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    HTP.openModal(`
+      <div class="modal-head"><h3>Corregir registro</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
+      <p class="muted" style="font-size:13px; margin-bottom:14px;">${reg.camion || 'sin camión'} · ${reg.detalle}</p>
+      <div class="field"><label>Fecha y hora</label><input id="erFechaHora" type="datetime-local" value="${localVal}"></div>
+      <div class="field"><label>Toneladas</label><input id="erToneladas" class="mono" type="number" step="0.001" value="${reg.toneladas}"></div>
+      <button class="btn btn-accent btn-block" onclick="Tarja.guardarEdicionRegistro('${regId}')">Guardar corrección</button>
+    `);
+  },
+  async guardarEdicionRegistro(regId) {
+    const reg = (turnoActual.registros || []).find(r => r.id === regId);
+    if (!reg) return;
+    const fh = document.getElementById('erFechaHora').value;
+    const ton = Number(document.getElementById('erToneladas').value);
+    if (!fh || !ton || ton <= 0) { HTP.toast('Completa fecha/hora y toneladas', 'bad'); return; }
+    await HTP.editarRegistro(turnoActual.id, buqueActual.id, reg, { ts: new Date(fh).toISOString(), toneladas: ton });
+    HTP.closeModal();
+    HTP.toast('Registro corregido', 'ok');
   },
   async eliminarRegistro(regId) {
     const reg = (turnoActual.registros || []).find(r => r.id === regId);
@@ -463,16 +487,7 @@ const Tarja = {
   renderCamionesPorHora() {
     const cont = document.getElementById('camionesPorHora');
     if (!cont) return;
-    const bloques = HTP.camionesPorHora([turnoActual]).slice().reverse();
-    if (!bloques.length) { cont.innerHTML = '<p class="muted" style="font-size:12.5px;">Aún sin viajes en este turno</p>'; return; }
-    const max = Math.max(...bloques.map(b => b.count));
-    cont.innerHTML = bloques.map(b => `
-      <div class="row-item">
-        <div class="main"><div class="t">${HTP.fmtBloqueHora(b.key)}</div>
-          <div class="bar" style="margin-top:4px; width:120px;"><span style="width:${(b.count / max * 100).toFixed(0)}%"></span></div>
-        </div>
-        <div class="side mono">${b.count} camiones · ${HTP.fmtTon(b.toneladas)} MT</div>
-      </div>`).join('');
+    cont.innerHTML = HTP.tablaCamionesPorHoraHTML([turnoActual], buqueActual);
   },
 
   /* ---------- REGISTRO GRANEL ---------- */

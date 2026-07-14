@@ -158,14 +158,20 @@ const Ger = {
 
       <div class="card-title">Estado bodegas</div>
       <div class="bodega-grid" style="margin-bottom:16px;">
-        ${Object.values(b.bodegas || {}).filter(x => x.activa).map(bod => {
+        ${HTP.bodegasOrdenadas(b).filter(x => x.activa).map(bod => {
           const avance = HTP.avanceBodega(bod);
           const estado = HTP.estadoBodega(bod);
-          const badgeClass = estado === 'finalizada' ? 'badge-ok' : estado === 'trabajando' ? 'badge-info' : 'badge-muted';
-          return `<div class="bodega-card">
-            <div class="head"><span class="n">${bod.nombre}</span><span class="badge ${badgeClass}">${estado}</span></div>
-            <div class="bar ${estado === 'finalizada' ? 'done' : ''}"><span style="width:${avance}%"></span></div>
-            <div class="mono" style="font-size:12px; margin-top:6px; color:var(--ink-dim);">${HTP.fmtTon(bod.tonAcumulado)} / ${HTP.fmtTon(bod.tonObjetivo)} MT · ${avance.toFixed(0)}%</div>
+          const etiquetas = { pendiente: 'En espera', trabajando: bod.tipo === 'descarga' ? 'Descargando' : 'Cargando', rematada: 'Rematada', inactiva: 'Inactiva' };
+          const saldo = Math.max(0, (Number(bod.tonObjetivo) || 0) - (Number(bod.tonAcumulado) || 0));
+          return `<div class="bodega-panel st-${estado}">
+            <div class="bp-head">
+              <span class="bp-nombre">${bod.nombre}</span>
+              <span class="badge ${estado === 'rematada' ? 'badge-bad' : estado === 'trabajando' ? 'badge-ok' : estado === 'pendiente' ? 'badge-warn' : 'badge-muted'}">${etiquetas[estado] || estado}</span>
+            </div>
+            <div class="bp-pct">${avance.toFixed(0)}%</div>
+            <div class="bp-bar"><span style="width:${avance}%"></span></div>
+            <div class="bp-saldo">${HTP.fmtTon(bod.tonAcumulado)} / ${HTP.fmtTon(bod.tonObjetivo)} MT · Saldo ${HTP.fmtTon(saldo)} MT</div>
+            ${estado === 'rematada' ? `<div class="bp-remate">🏁 Rematada ${HTP.fmtFechaHora(bod.remate.fecha)}</div>` : ''}
           </div>`;
         }).join('') || '<p class="muted">Sin bodegas activas</p>'}
       </div>

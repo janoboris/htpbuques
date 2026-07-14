@@ -253,4 +253,33 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 /* ---------- Hora rápida (digitación HH:MM) ---------- */
 .hora-rapida { font-family: var(--font-mono); font-size: 20px; text-align: center; letter-spacing: 0.08em; }
 
+/* ---------- Panel de bodega mejorado (colores por estado) ---------- */
+.bodega-panel { border-radius: var(--radius-md); padding: 16px; border: 1.5px solid var(--border-soft); }
+.bodega-panel.st-pendiente { background: rgba(224,160,48,0.13); border-color: rgba(224,160,48,0.4); }
+.bodega-panel.st-trabajando { background: rgba(47,184,114,0.13); border-color: rgba(47,184,114,0.45); }
+.bodega-panel.st-rematada { background: rgba(226,73,92,0.13); border-color: rgba(226,73,92,0.45); }
+.bodega-panel.st-inactiva { background: var(--bg-panel-2); opacity: 0.55; }
+.bodega-panel .bp-head { display: flex; justify-content: space-between; align-items: center; }
+.bodega-panel .bp-nombre { font-size: 15px; font-weight: 700; color: var(--ink-bright); }
+.bodega-panel .bp-pct { font-family: var(--font-mono); font-size: 32px; font-weight: 800; color: var(--ink-bright); margin: 8px 0 4px; letter-spacing: -0.02em; }
+.bodega-panel .bp-bar { height: 14px; border-radius: 20px; background: rgba(255,255,255,0.14); overflow: hidden; margin: 6px 0 10px; }
+.bodega-panel .bp-bar > span { display: block; height: 100%; border-radius: 20px; transition: width .4s; }
+.bodega-panel.st-trabajando .bp-bar > span { background: var(--ok); }
+.bodega-panel.st-rematada .bp-bar > span { background: var(--bad); }
+.bodega-panel.st-pendiente .bp-bar > span { background: var(--warn); }
+.bodega-panel.st-inactiva .bp-bar > span { background: var(--ink-faint); }
+.bodega-panel .bp-saldo { font-size: 12.5px; color: var(--ink-dim); font-family: var(--font-mono); }
+.bodega-panel .bp-remate { font-size: 11.5px; color: var(--bad); margin-top: 8px; font-weight: 600; }
+
+/* ---------- Camiones por hora, agrupado por día ---------- */
+.cph-dia { margin-bottom: 18px; }
+.cph-dia:last-child { margin-bottom: 0; }
+.cph-dia-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); margin-bottom: 6px; }
+.cph-fecha { font-size: 13.5px; font-weight: 700; color: var(--ink-bright); text-transform: capitalize; }
+.cph-total { font-size: 12px; color: var(--ink-dim); }
+table.cph-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.cph-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); padding: 5px 6px; }
+table.cph-table td { padding: 6px; border-top: 1px solid var(--border-soft); color: var(--ink); }
+table.cph-table td:first-child, table.cph-table th:first-child { color: var(--ink-bright); font-weight: 600; }
+
 ::selection { background: var(--forge); color: white; }
