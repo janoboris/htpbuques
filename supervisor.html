@@ -325,14 +325,15 @@ const Sup = {
           ${HTP.badgeEstadoBuque(b)}
         </div>
         <div class="hidden" id="detalle-${b.id}" style="margin-top:14px;">
-          <div class="kpi-grid cols-4">
-            <div class="kpi"><div class="v mono" style="font-size:26px;">${HTP.fmtRate(r.rate)}</div><div class="l">Rendimiento</div></div>
-            <div class="kpi"><div class="v mono" style="font-size:26px;">${HTP.fmtDuracion(r.horas * 60)}</div><div class="l">Horas efectivas</div></div>
-            <div class="kpi"><div class="v mono">${r.turnos}</div><div class="l">Turnos</div></div>
-            <div class="kpi"><div class="v mono">${HTP.fmtPct(r.productividad)}%</div><div class="l">Productividad</div></div>
+          <div class="card-title">Rendimiento</div>
+          ${HTP.resumenBuqueKpisHTML(r)}
+          <div style="display:flex; gap:20px; margin-top:8px;">
+            <div class="kpi" style="padding:6px;"><div class="v mono">${r.turnos}</div><div class="l">Turnos con datos</div></div>
           </div>
           <div class="divider"></div>
           <div class="info-grid" style="margin-bottom:14px;">
+            <div><div class="l">Inicio faena</div><div class="v">${b.fechaInicioReal ? HTP.fmtFechaHora(b.fechaInicioReal) : '—'}</div></div>
+            <div><div class="l">Fin faena</div><div class="v">${b.estado === 'cerrado' && b.fechaCierre ? HTP.fmtFechaHora(b.fechaCierre) : '— (en curso)'}</div></div>
             <div><div class="l">Atraque</div><div class="v">${at.fecha ? HTP.fmtFechaHora(at.fecha) : '—'} ${at.practico ? '· ' + at.practico : ''}</div></div>
             <div><div class="l">Desatraque</div><div class="v">${de.fecha ? HTP.fmtFechaHora(de.fecha) : '—'} ${de.practico ? '· ' + de.practico : ''}</div></div>
           </div>
@@ -543,17 +544,22 @@ const Sup = {
   renderDetenciones() {
     const cont = document.getElementById('listaDetenciones');
     if (!DETENCIONES.length) { cont.innerHTML = '<p class="muted center" style="padding:20px 0;">Sin detenciones registradas</p>'; return; }
-    cont.innerHTML = DETENCIONES.map(d => `
+    cont.innerHTML = DETENCIONES.map(d => {
+      const di = new Date(d.horaInicio), df = d.horaTermino ? new Date(d.horaTermino) : new Date();
+      const durMin = Math.max(0, (df - di) / 60000);
+      const manos = Number(d.manos) || 1;
+      return `
       <div class="row-item">
         <div class="main">
           <div class="t">${d.motivo}</div>
-          <div class="s">${HTP.fmtFechaHora(d.horaInicio)} → ${d.horaTermino ? HTP.fmtFechaHora(d.horaTermino) : 'en curso'} ${d.observacion ? '· ' + d.observacion : ''}</div>
+          <div class="s">${HTP.fmtFechaHora(d.horaInicio)} → ${d.horaTermino ? HTP.fmtFechaHora(d.horaTermino) : 'en curso'} · ${HTP.fmtDuracion(durMin)}${manos > 1 ? ` · ${manos} manos` : ''} ${d.observacion ? '· ' + d.observacion : ''}</div>
         </div>
         <div class="side" style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
           <span class="badge ${d.afectaRate ? 'badge-bad' : 'badge-muted'}">${d.afectaRate ? 'Afecta rate' : 'No afecta'}</span>
           ${!d.horaTermino ? `<button class="btn btn-ghost btn-xs" onclick="Sup.cerrarDetencion('${d.id}')">Cerrar ahora</button>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   },
   abrirModalDetencion() {
     const buqueId = document.getElementById('selBuqueDetencion').value;
@@ -561,26 +567,47 @@ const Sup = {
     HTP.openModal(`
       <div class="modal-head"><h3>Nueva detención</h3><button class="modal-close" onclick="HTP.closeModal()">✕</button></div>
       <div class="field"><label>Motivo</label><input id="dtMotivo" placeholder="Ej: Falla de correa transportadora"></div>
+      <div class="field-row">
+        <div class="field"><label>Fecha</label><input id="dtFecha" type="date" value="${HTP.hoyISO()}"></div>
+        <div class="field"><label>Hora inicio</label><input id="dtHoraInicio" type="text" placeholder="HH:MM"></div>
+      </div>
+      <div class="field"><label>Hora término (vacío = sigue en curso)</label><input id="dtHoraTermino" type="text" placeholder="HH:MM"></div>
       <div class="field"><label>Observación (opcional)</label><input id="dtObs" placeholder=""></div>
+      <div class="field"><label>¿Cuántas manos / cuadrillas trabajando en paralelo?</label>
+        <div class="seg"><button type="button" class="active" onclick="Sup.setManos(1,this)">1 (normal)</button><button type="button" onclick="Sup.setManos(2,this)">2 (solo se pierde la mitad)</button></div>
+      </div>
+      <input type="hidden" id="dtManos" value="1">
       <div class="field"><label>¿Afecta el rate?</label>
         <div class="seg"><button type="button" class="active" onclick="Sup.setAfecta(true,this)">Sí</button><button type="button" onclick="Sup.setAfecta(false,this)">No</button></div>
       </div>
       <input type="hidden" id="dtAfecta" value="true">
-      <button class="btn btn-accent btn-block" onclick="Sup.crearDetencion('${buqueId}')">Iniciar detención (ahora)</button>
+      <button class="btn btn-accent btn-block" onclick="Sup.crearDetencion('${buqueId}')">Registrar detención</button>
     `);
+    HTP.wireHorasRapidas(['dtHoraInicio', 'dtHoraTermino']);
   },
   setAfecta(v, el) {
     document.getElementById('dtAfecta').value = v;
     el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
     el.classList.add('active');
   },
+  setManos(v, el) {
+    document.getElementById('dtManos').value = v;
+    el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  },
   async crearDetencion(buqueId) {
     const motivo = document.getElementById('dtMotivo').value.trim();
     if (!motivo) { HTP.toast('Ingresa un motivo', 'bad'); return; }
+    const fecha = document.getElementById('dtFecha').value || HTP.hoyISO();
+    const hIni = document.getElementById('dtHoraInicio').value;
+    const hFin = document.getElementById('dtHoraTermino').value;
+    const horaInicio = hIni ? new Date(fecha + 'T' + hIni + ':00').toISOString() : new Date().toISOString();
+    const horaTermino = hFin ? new Date(fecha + 'T' + hFin + ':00').toISOString() : null;
     await HTP.crearDetencion({
-      buqueId, motivo,
+      buqueId, motivo, horaInicio, horaTermino,
       observacion: document.getElementById('dtObs').value.trim(),
       afectaRate: document.getElementById('dtAfecta').value === 'true',
+      manos: Number(document.getElementById('dtManos').value) || 1,
       creadoPor: usuario.nombre
     });
     HTP.closeModal();
@@ -994,16 +1021,48 @@ const Sup = {
     if (!filtrados.length) { cont.innerHTML = '<p class="muted center" style="padding:20px 0;">Sin resultados</p>'; return; }
     cont.innerHTML = filtrados.map(b => {
       const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === b.id);
-      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque);
-      return `<div class="row-item">
-        <div class="main"><div class="t">${b.nombre} ${b.voyage || ''}</div>
-          <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(r.ton)} MT · rendimiento ${HTP.fmtRate(r.rate)}</div></div>
-        <div class="side" style="display:flex; gap:6px;">
-          <button class="btn btn-ghost btn-xs" onclick="Sup.exportarCSV('${b.id}')">⬇ CSV</button>
-          <button class="btn btn-ghost btn-xs" onclick="Sup.reabrirDesdeHistorico('${b.id}')">↺ Reabrir</button>
+      const detBuque = TODAS_DETENCIONES.filter(d => d.buqueId === b.id);
+      const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque, detBuque);
+      return `<div class="card" style="margin-bottom:10px;">
+        <div class="row-item" style="cursor:pointer; padding:0;" onclick="Sup.toggleHistDetalle('${b.id}')">
+          <div class="main"><div class="t">${b.nombre} ${b.voyage || ''}</div>
+            <div class="s">${b.tipoOperacion} · ${b.tipoGranel} · ${HTP.fmtTon(r.ton)} MT · rendimiento ${HTP.fmtRate(r.rate)} MT/h</div></div>
+          <div class="side" style="display:flex; gap:6px;" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-xs" onclick="Sup.exportarCSV('${b.id}')">⬇ CSV</button>
+            <button class="btn btn-ghost btn-xs" onclick="Sup.reabrirDesdeHistorico('${b.id}')">↺ Reabrir</button>
+          </div>
         </div>
+        <div class="hidden" id="hist-detalle-${b.id}" style="margin-top:14px;"></div>
       </div>`;
     }).join('');
+  },
+  toggleHistDetalle(id) {
+    const el = document.getElementById('hist-detalle-' + id);
+    const abierto = !el.classList.contains('hidden');
+    if (abierto) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('hidden');
+    const b = BUQUES.find(x => x.id === id);
+    const turnosBuque = TODOS_TURNOS.filter(t => t.buqueId === id);
+    const detBuque = TODAS_DETENCIONES.filter(d => d.buqueId === id);
+    const r = HTP.calcularRendimientoPorTurnos(b, turnosBuque, detBuque);
+    const at = b.atraque || {}, de = b.desatraque || {};
+    el.innerHTML = `
+      <div class="card-title">Rendimiento</div>
+      ${HTP.resumenBuqueKpisHTML(r)}
+      <div class="divider"></div>
+      <div class="info-grid" style="margin-bottom:14px;">
+        <div><div class="l">Inicio faena</div><div class="v">${b.fechaInicioReal ? HTP.fmtFechaHora(b.fechaInicioReal) : '—'}</div></div>
+        <div><div class="l">Fin faena</div><div class="v">${b.fechaCierre ? HTP.fmtFechaHora(b.fechaCierre) : '—'}</div></div>
+        <div><div class="l">Atraque</div><div class="v">${at.fecha ? HTP.fmtFechaHora(at.fecha) : '—'} ${at.practico ? '· ' + at.practico : ''}</div></div>
+        <div><div class="l">Desatraque</div><div class="v">${de.fecha ? HTP.fmtFechaHora(de.fecha) : '—'} ${de.practico ? '· ' + de.practico : ''}</div></div>
+      </div>
+      <div class="bodega-grid">
+        ${HTP.bodegasOrdenadas(b).filter(x => x.activa).reverse().map(bod => Sup.bodegaCardHTML(b.id, bod, r.rate)).join('') || '<p class="muted">Sin bodegas activas</p>'}
+      </div>
+      <div class="divider"></div>
+      <div class="card-title">Camiones por hora</div>
+      ${HTP.tablaCamionesPorHoraHTML(turnosBuque, b, detBuque)}
+    `;
   },
   async reabrirDesdeHistorico(id) {
     if (!HTP.confirmar('¿Reabrir este buque como activo?')) return;

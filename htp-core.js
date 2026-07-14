@@ -456,10 +456,14 @@ const HTP = (() => {
       motivo: data.motivo,
       observacion: data.observacion || '',
       afectaRate: !!data.afectaRate,
+      manos: Number(data.manos) || 1,
       creadoPor: data.creadoPor || null,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     return ref.id;
+  }
+  async function editarDetencion(id, cambios) {
+    await col('detenciones').doc(id).update(cambios);
   }
   async function cerrarDetencion(id, horaTermino) {
     await col('detenciones').doc(id).update({ horaTermino: horaTermino || new Date().toISOString() });
@@ -558,6 +562,22 @@ const HTP = (() => {
       const totBodegasDia = totalesPorBodega(registrosValidos, buque);
       return { fecha, bloquesPorTurno, totalCamiones, totalToneladas, totalHoras, rateRealDia, rateMetaHora, totBodegasDia };
     });
+  }
+
+  // Resumen general del buque (arriba de todo el detalle): rate real vs
+  // esperado, hora a hora y por día, con el cumplimiento en %. Mismo
+  // lenguaje visual que el resumen por turno, para que se lea igual en
+  // Supervisor, Gerencia e Histórico.
+  function resumenBuqueKpisHTML(r) {
+    const cumplClass = !r.rateMetaHora ? 'badge-muted' : r.productividad >= 100 ? 'badge-ok' : r.productividad >= 70 ? 'badge-warn' : 'badge-bad';
+    return `
+    <div class="cph-turno-kpis" style="grid-template-columns:repeat(5,1fr);">
+      <div><span class="l">Rate real (MT/h)</span><span class="v mono">${fmtRate(r.rate)}</span></div>
+      <div><span class="l">Rate esp. (MT/h)</span><span class="v mono">${r.rateMetaHora ? fmtRate(r.rateMetaHora) : '—'}</span></div>
+      <div><span class="l">Rate real / día</span><span class="v mono">${fmtRate(r.rate * 24)}</span></div>
+      <div><span class="l">Horas efectivas</span><span class="v mono">${fmtDuracion(r.horas * 60)}</span></div>
+      <div><span class="l">Cumpl.</span><span class="badge ${cumplClass}" style="font-size:13px;">${r.rateMetaHora ? r.productividad.toFixed(0) + '%' : '—'}</span></div>
+    </div>`;
   }
 
   function tablaTotalesBodegaHTML(totBodegas, totCamiones, totToneladas, titulo) {
@@ -790,7 +810,9 @@ const HTP = (() => {
         const df = d.horaTermino ? new Date(d.horaTermino) : fin;
         const solapIni = di > inicioEfectivo ? di : inicioEfectivo;
         const solapFin = df < fin ? df : fin;
-        return s + Math.max(0, (solapFin - solapIni) / 60000);
+        const mins = Math.max(0, (solapFin - solapIni) / 60000);
+        const manos = Number(d.manos) || 1; // 2 manos trabajando en paralelo: solo se pierde la mitad de la capacidad
+        return s + (mins / manos);
       }, 0);
       horas = Math.max(0, horas - minutos / 60);
     }
@@ -806,8 +828,9 @@ const HTP = (() => {
     const ton = validos.reduce((s, t) => s + (Number(t.totalToneladas) || 0), 0);
     const horas = validos.reduce((s, t) => s + horasDefaultTurno(t, detenciones), 0);
     const rate = horas > 0 ? ton / horas : 0;
-    const productividad = buque && buque.rateMeta > 0 ? (rate / buque.rateMeta) * 100 : 0;
-    return { ton, horas, rate, productividad, turnos: validos.length };
+    const rateMetaHora = buque && buque.rateMeta > 0 ? buque.rateMeta / 24 : 0;
+    const productividad = rateMetaHora > 0 ? (rate / rateMetaHora) * 100 : 0;
+    return { ton, horas, rate, rateMetaHora, productividad, turnos: validos.length };
   }
 
   /* ==================================================================
@@ -906,8 +929,8 @@ const HTP = (() => {
     cerrarBuque, reabrirBuque, pausarGira, reanudarDeGira, eliminarBuque,
     turnoDocId, listenTurnosDeBuque, listenTurnosAbiertos, listenTodosTurnos, abrirTurno, agregarRegistro, agregarRegistroCancha, eliminarRegistro, editarRegistro, horaDuplicada, horaFueraDeTurno, rangoTurnoTexto, cerrarTurno, aprobarTurno, cerrarYAprobarTurno, rechazarTurno, crearTurnoHistorico, eliminarTurnoCompleto, editarTurnoUI, abrirModalEditarTurnoPorId, guardarEdicionTurno, confirmarEliminarTurno,
     listenCamiones, guardarCamion, eliminarCamion,
-    listenDetenciones, listenTodasDetenciones, crearDetencion, cerrarDetencion, eliminarDetencion,
-    totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, calcularProyeccionBodega, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML,
+    listenDetenciones, listenTodasDetenciones, crearDetencion, editarDetencion, cerrarDetencion, eliminarDetencion,
+    totalToneladas, sumarAcero, avanceBodega, estadoBodega, marcarBodegaRemate, quitarBodegaRemate, calcularTiempos, calcularRates, calcularRendimientoPorTurnos, calcularProyeccion, calcularProyeccionBodega, fmtProyeccionBadge, estaAtracado, badgeEstadoBuque, camionesPorHora, resumenPorDia, tablaCamionesPorHoraHTML, resumenBuqueKpisHTML,
     fmtTon, fmtRate, fmtPct, fmtDuracion, fmtFechaHora, fmtHora, fmtBloqueHora, fechaLocalCorta, hoyISO, turnoActualNum, wireHorasRapidas,
     toast, openModal, closeModal, confirmar
   };
